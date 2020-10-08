@@ -1,0 +1,9 @@
+/data/
+/wandb/
+/exp/
+/pretrained/
+.DS_Store
+._.DS_Store
+/src/__pycache__/
+/models/__pycache/
+/notebook-am/

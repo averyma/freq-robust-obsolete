@@ -1,0 +1,25 @@
+# method / detaset / arch / pretrained
+method: "standard"
+dataset: "cifar10"
+arch: "c11"
+log_dir: "./exp/"
+pretrain: ""
+
+# optimization settings
+optim: "sgd"
+lr: 0.01
+lr_update: "fixed"
+momentum: 0.9
+weight_decay: 0.0002
+batch_size: 128
+seed: 0
+epoch: 200 
+
+# checkpoint
+ckpt_freq: 1
+
+# adversarial training
+pgd_steps: 10
+
+# wandb flag
+enable_wandb: false
