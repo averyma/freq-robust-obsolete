@@ -76,6 +76,7 @@ def main():
 
         logger.add_scalar("pgd20/acc", adv_log[0], _epoch+1)
         logger.add_scalar("pgd20/loss", adv_log[1], _epoch+1)
+        logger.add_scalar("pgd20/delta_2norm", adv_log[2], _epoch+1)
         logger.add_scalar("test/acc", test_log[0], _epoch+1)
         logger.add_scalar("test/loss", test_log[1], _epoch+1)
         logging.info(

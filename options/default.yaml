@@ -1,7 +1,7 @@
 # method / detaset / arch / pretrained
 method: "standard"
 dataset: "cifar10"
-arch: "c11"
+arch: "c12"
 log_dir: "./exp/"
 pretrain: ""
 

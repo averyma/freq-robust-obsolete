@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.optim as optim
-from models import c11, ResNet18, ResNet8
+from models import c11, ResNet18, ResNet8, c12
 from torch.utils.data import Dataset, DataLoader
 from torchvision import datasets, transforms
 from torch.autograd import grad
@@ -32,6 +32,10 @@ def get_model(argu, device):
         model = ResNet18()
     elif argu.arch == "resnet8":
         model = ResNet8()
+    elif argu.arch == "c12":
+        model = c12()
+    else:
+        raise NotImplementedError("model not included")
     
     if argu.pretrain:
         

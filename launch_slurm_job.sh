@@ -7,7 +7,7 @@ resource=$3
 cmd=$4
 hdd=/scratch/hdd001/home/$USER
 ssd=/scratch/ssd001/home/$USER
-j_dir=$ssd/workspace/ama-at-vector/test-bench/exp/$d/$j_name
+j_dir=$ssd/workspace/ama-at-vector/freq-robust/exp/$d/$j_name
 
 mkdir -p $j_dir/scripts
 
