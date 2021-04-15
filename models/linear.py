@@ -100,3 +100,24 @@ class quad1(nn.Module):
         x = self.readout(x)
     
         return x.squeeze()
+    
+class LR_model(nn.Module):
+    def __init__(self, dim):
+        super(LR_model, self).__init__()
+        self.linear = nn.Linear(dim, 1, bias = False)
+#         self.conv1 = nn.Conv2d(1, dim, 28, 1, bias = False)
+        
+        torch.nn.init.kaiming_normal_(self.linear.weight)
+    
+#         k = 0.5*torch.ones_like(self.linear.weight.data)
+#         print(self.linear.weight.data)
+#         self.linear.weight.data = self.linear.weight.data + k
+#         print(self.linear.weight.data)
+#         self.linear.weight[0].data
+#         print(self.linear.weight.data)
+        
+    def forward(self, x):
+#         x = torch.flatten(1, x)
+        output = self.linear(x.t())
+#         output = self.conv1(x)
+        return output
