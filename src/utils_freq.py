@@ -1,6 +1,7 @@
 import torch
 import cv2
 import numpy as np
+import ipdb
 
 def rgb2gray(rgb_input):
     """
@@ -31,13 +32,20 @@ def getDCTmatrix(size):
         output: DCT matrix with shape (size,size)
     """
     dct_matrix = torch.zeros([size, size])
-
-    for i in range(0, size):
-        for j in range(0, size):
-            if j == 0:
-                dct_matrix[i, j] = np.sqrt(1/size)*np.cos(np.pi*(2*i+1)*j/2/size)
-            else:
-                dct_matrix[i, j] = np.sqrt(2/size)*np.cos(np.pi*(2*i+1)*j/2/size)
+    
+    if size == 784:
+        dct_matrix = torch.load("/scratch/ssd001/home/ama/workspace/ama-at-vector/freq-robust/dct_matrix/784.pt")
+    elif size ==28:
+        dct_matrix = torch.load("/scratch/ssd001/home/ama/workspace/ama-at-vector/freq-robust/dct_matrix/28.pt")
+    elif size ==32:
+        dct_matrix = torch.load("/scratch/ssd001/home/ama/workspace/ama-at-vector/freq-robust/dct_matrix/32.pt")
+    else:
+        for i in range(0, size):
+            for j in range(0, size):
+                if j == 0:
+                    dct_matrix[i, j] = np.sqrt(1/size)*np.cos(np.pi*(2*i+1)*j/2/size)
+                else:
+                    dct_matrix[i, j] = np.sqrt(2/size)*np.cos(np.pi*(2*i+1)*j/2/size)
 
     return dct_matrix
 
@@ -46,9 +54,22 @@ def dct(input_tensor):
         reference: https://docs.opencv.org/2.4/modules/core/doc/operations_on_arrays.html#dct
     """ 
     size = input_tensor.shape[0]
+
     dct_matrix = getDCTmatrix(size).to(input_tensor.device)
     dct_output = torch.mm(dct_matrix.transpose(0, 1), input_tensor)
 
+    return dct_output
+
+def batch_dct(input_tensor, dct_matrix):
+    """
+        reference: https://docs.opencv.org/2.4/modules/core/doc/operations_on_arrays.html#dct
+    """ 
+    m = input_tensor.shape[0]
+    d = input_tensor.shape[1]
+
+    dct_matrix = dct_matrix.to(input_tensor.device).expand(m,-1,-1)
+    dct_output = torch.bmm(dct_matrix.transpose(1, 2), input_tensor.view(m,d,1)).squeeze()
+    
     return dct_output
 
 def idct(input_tensor):
@@ -62,7 +83,7 @@ def idct(input_tensor):
 
     return idct_output
 
-def dct2(input_tensor, device):
+def dct2(input_tensor):
     """
         reference: https://docs.opencv.org/2.4/modules/core/doc/operations_on_arrays.html#dct
         
@@ -72,12 +93,12 @@ def dct2(input_tensor, device):
     """ 
     
     size = input_tensor.shape[0]
-    dct_matrix = getDCTmatrix(size, device)
+    dct_matrix = getDCTmatrix(size).to(input_tensor.device)
     dct_output = torch.mm(torch.mm(dct_matrix.transpose(0, 1), input_tensor),dct_matrix)
 
     return dct_output
 
-def idct2(input_tensor, device):
+def idct2(input_tensor):
     """
         reference: https://docs.opencv.org/2.4/modules/core/doc/operations_on_arrays.html#dct
         
@@ -86,24 +107,33 @@ def idct2(input_tensor, device):
         output shape: (size, size)
     """ 
     
-    size = input_tensor.shape[0]
-    idct_matrix = torch.inverse(getDCTmatrix(size, device))
-    idct_output = torch.mm(torch.mm(idct_matrix.transpose(0, 1), input_tensor),idct_matrix)
+    size = input_tensor.shape[3]
+    idct_matrix = torch.inverse(getDCTmatrix(size)).to(input_tensor.device)
+    idct_output = torch.mm(torch.mm(idct_matrix.transpose(0, 1), input_tensor.squeeze()),idct_matrix)
 
     return idct_output
 
-def batch_dct2(input_tensor):
+def batch_dct2(input_tensor, dct_matrix):
     """
         reference: https://docs.opencv.org/2.4/modules/core/doc/operations_on_arrays.html#dct
-        
-        Note that this operation is performed on the entire batch
-        input shape: (batch, size, size)
-        output shape: (batch, size, size)
     """ 
-    
-    size = input_tensor.shape[1]
-    dct_matrix = getDCTmatrix(size, device).view(1, size, size).expand(input_tensor.shape[0], -1, -1)
-    dct_output = torch.bmm(torch.bmm(dct_matrix.transpose(1, 2), input_tensor), dct_matrix)
+    batch_size = input_tensor.shape[0]
+    d = input_tensor.shape[2]
 
-    return dct_output
+    dct_matrix = dct_matrix.to(input_tensor.device).expand(batch_size,-1,-1)
+    dct2_output = torch.bmm(torch.bmm(dct_matrix.transpose(1, 2), input_tensor.view(batch_size,d,d)), dct_matrix)
+    
+    return dct2_output
+
+def batch_idct2(input_tensor, dct_matrix):
+    """
+        reference: https://docs.opencv.org/2.4/modules/core/doc/operations_on_arrays.html#dct
+    """ 
+    batch_size = input_tensor.shape[0]
+    d = input_tensor.shape[2]
+
+    idct_matrix = torch.inverse(dct_matrix).to(input_tensor.device).expand(batch_size,-1,-1)
+    idct2_output = torch.bmm(torch.bmm(idct_matrix.transpose(1, 2), input_tensor.view(batch_size,d,d)), idct_matrix)
+    
+    return idct2_output
 

@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import torch.optim as optim
 import numpy as np
 
-from src.utils_freq import dct, idct
+from src.utils_freq import dct, idct, getDCTmatrix
 
 from collections import defaultdict
 from tqdm import trange
@@ -64,11 +64,12 @@ def grad_estimation(w_tilde, lr, case, d, mu, std, lambbda):
             grad_est[i] = lr*(w_tilde.sum()*mu**2 - w_tilde[i]*mu**2 + w_tilde[i]*(mu**2 + std**2) - mu**2)
             
     elif case == 3:
-        exp_i = torch.exp(-lambbda*(torch.range(1, d, device = w_tilde.device)-1))
+        exp_i = torch.exp(-torch.tensor(lambbda, device = w_tilde.device)*(torch.range(1, d, device = w_tilde.device)-1))
         grad_est[0] = lr*( (mu**2 * w_tilde * exp_i)[1:].sum() + (w_tilde[0]-1)*(mu**2 + std**2))
         
         for i in range(1, d):
-            exp_k = torch.exp(-lambbda*torch.tensor(i))
+#             ipdb.set_trace()
+            exp_k = torch.exp(-torch.tensor(lambbda, dtype = torch.float32, device = w_tilde.device)*torch.tensor(i))
             grad_est[i] = lr*(((w_tilde*exp_i*exp_k).sum() - w_tilde[i]*exp_k**2)*mu**2 + w_tilde[i]*exp_k**2*(mu**2 + std**2) - mu**2*exp_k)
 
     return grad_est
@@ -100,8 +101,9 @@ def train_LR(args, model, opt, device):
     for x, y in train_loader:
 
         x, y = x.t().to(device), y.t().to(device)
-
-        w_tilde_prev = dct(list(model.parameters())[0][0].view(_d,1)).squeeze().detach()
+#         ipdb.set_trace()
+        
+        w_tilde_prev = dct(model.state_dict()['linear.weight'].view(_d,1)).squeeze().detach()
 
         opt.zero_grad()
 
@@ -116,7 +118,7 @@ def train_LR(args, model, opt, device):
         loss.backward()
         opt.step()
 
-        w[:,i] = list(model.parameters())[0][0].detach()
+        w[:,i] = model.state_dict()['linear.weight'].squeeze().detach()
         w_tilde[:,i] = dct(w[:,i].view(_d,1)).squeeze().detach()
         dw_tilde[0,:,i] = -(w_tilde[:,i] - w_tilde_prev).detach()
         dw_tilde[1,:,i] = grad_estimation(w_tilde_prev, 
@@ -157,7 +159,7 @@ def loss_under_attack(args, model, device):
     y_hat = model(x)
     r = (y_hat.t() - y)
     
-    w = list(model.parameters())[0][0].detach()
+    w = model.state_dict()['linear.weight'].squeeze().detach()
     w_tilde = dct(w.view(_d,1)).detach()
     
 
@@ -239,6 +241,10 @@ def plot_risk_LR(args, w_tilde_log, loss_log, threshold = 1e-3, plot_itr = 1000)
     
     _std = args["std"]
     _lr = args["lr"]
+    _d = args["d"]
+    _lambbda = args["lambbda"]
+    
+    w_tilde_log_copy = w_tilde_log.clone().detach()
     
     fig = plt.figure(figsize = [15,7])
     fig.patch.set_facecolor('white')
@@ -254,18 +260,28 @@ def plot_risk_LR(args, w_tilde_log, loss_log, threshold = 1e-3, plot_itr = 1000)
     
     
     for i in range(loss_log.shape[2]):
+#     for i in [2]:
         fig.add_subplot(gs[0,0]).plot(loss_mean[:, i], color = "C"+str(i), label = "case "+str(i+1), linewidth=3.0, marker = "")
         fig.add_subplot(gs[0,0]).fill_between(xrange, fill_up[:, i], fill_low[:, i], color = "C"+str(i), alpha=0.3)
         
         if i == 0: # case 1
-            e_0 = w_tilde_log[0,0,:,0] - 1 # only supports numb_runs = 1, so error will occur if we do average over multiple runs
+            e_0 = w_tilde_log_copy[0,0,:,0] - 1 # only supports numb_runs = 1, so error will occur if we do average over multiple runs
             risk = 0.5 * e_0**2 * _std**2 * torch.tensor(1 - 2*_lr*_std**2 + 3*_lr**2*_std**4)**torch.tensor(xrange)
             fig.add_subplot(gs[0,0]).plot(risk, color = "C"+str(i+3), label = "case "+str(i+1)+" risk", linewidth=3.0, marker = "")
         elif i == 1: # case 2
-            pass
+            e_0 = w_tilde_log_copy[:,0,:,1] # only supports numb_runs = 1, so error will occur if we do average over multiple runs
+            e_0[0] = e_0[0] - 1
+            risk = 0.5 * torch.norm(e_0, p =2)**2 * _std**2 * torch.tensor(1 - 2*_lr*_std**2 + 3*_lr**2*_std**4)**torch.tensor(xrange)
+            fig.add_subplot(gs[0,0]).plot(risk, color = "C"+str(i+3), label = "case "+str(i+1)+" risk", linewidth=3.0, marker = "")
         elif i ==2: # case 3
-            pass
-        
+            e_i = w_tilde_log_copy[:,0,:,2]
+            e_i[0] -= 1
+#             ipdb.set_trace()
+            bracket_term = [np.exp(-2*d*_lambbda)*torch.tensor(1 - 2 * _lr * _std**2 * np.exp(-2*d*_lambbda) + 3 * _lr**2 * _std**4 * np.exp(-4*d*_lambbda))**torch.tensor(xrange) for d in range(_d)]
+            sum_term = torch.stack(bracket_term).T @ (torch.tensor(e_i)**2)
+            risk = 0.5 * _std**2 * sum_term
+            fig.add_subplot(gs[0,0]).plot(risk, color = "C"+str(i+3), label = "case "+str(i+1)+" risk", linewidth=3.0, marker = "")
+
         try:
             fig.add_subplot(gs[0,0]).axvline(x=loss_below_threshold[:,i].tolist().index(1), color = "C"+str(i), linestyle = '--')
         except ValueError as e:
@@ -345,6 +361,10 @@ def plot_dw_tilde_LR(log):
     plt.gca().spines['top'].set_visible(False)
     plt.gca().spines['right'].set_visible(False)
     
+    
+def plot_risk_adv_LR(log, threshold = 1e-3, plot_itr = 1000):
+    #simona
+    return 0
     
 def plot_loss_adv_LR(log, threshold = 1e-3, plot_itr = 1000):
     

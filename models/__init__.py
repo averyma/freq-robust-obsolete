@@ -7,3 +7,4 @@ from .wideresnet import *
 from .conv import *
 from .mlp import *
 from .linear import *
+from .two_layer import *
