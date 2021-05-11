@@ -5,30 +5,45 @@ import numpy as np
 import ipdb
 
 class two_layer_flatten(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
+    def __init__(self, input_dim, hidden_dim, output_dim, activation = "sigmoid"):
         super(two_layer_flatten, self).__init__()
         self.linear1 = nn.Linear(input_dim, hidden_dim, bias = False)
         torch.nn.init.normal_(self.linear1.weight,mean=0.0, std=1.0)
         self.linear2 = nn.Linear(hidden_dim, output_dim, bias = False)
         torch.nn.init.normal_(self.linear2.weight,mean=0.0, std=1.0)
-
+        
+        if activation in ["sigmoid", "Sigmoid"]:
+            self.activation = torch.nn.Sigmoid()
+        elif activation in ["Relu", "relu"]:
+            self.activation = torch.nn.ReLU()
+        elif activation in ["tanh", "Tanh"]:
+            self.activation = torch.nn.Tanh()
+            
     def forward(self, x):
-        output = torch.sigmoid(self.linear1(x.t()))
+        output = self.activation(self.linear1(x.t()))
         output = self.linear2(output)
 
         return output
     
 class two_layer_conv(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
+    def __init__(self, input_dim, hidden_dim, output_dim, activation = "sigmoid"):
         super(two_layer_conv, self).__init__()
         self.conv1 = nn.Conv2d(1, hidden_dim, input_dim, 1, bias = False)
 #         torch.nn.init.xavier_uniform(self.conv1.weight)
         torch.nn.init.normal_(self.conv1.weight,mean=0.0, std=1.0)
         self.linear2 = nn.Linear(hidden_dim, output_dim, bias = False)
         torch.nn.init.normal_(self.linear2.weight,mean=0.0, std=1.0)
+        
+        if activation in ["sigmoid", "Sigmoid"]:
+            self.activation = torch.nn.Sigmoid()
+        elif activation in ["Relu", "relu"]:
+            self.activation = torch.nn.ReLU()
+        elif activation in ["tanh", "Tanh"]:
+            self.activation = torch.nn.Tanh()
 
     def forward(self, x):
-        output = torch.sigmoid(self.conv1(x)[:,:,0,0])
+        output = self.activation(self.conv1(x)[:,:,0,0])
+#         output = torch.sigmoid()
         output = self.linear2(output)
         return output
     

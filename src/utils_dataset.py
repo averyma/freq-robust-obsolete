@@ -1,17 +1,20 @@
+import torch
 import numpy as np
 from torch.utils.data import Dataset, DataLoader
 from torchvision import datasets, transforms
     
 def load_RealDataset(dataset, _batch_size = 128):
 
-    if dataset == "mnist"
+    if dataset in ["mnist","MNIST"]:
         train_loader, test_loader = load_MNIST(_batch_size)
-    elif dataset == "binarymnist"
+    elif dataset in ["binarymnist","BinaryMnist","Binarymnist"]:
         train_loader, test_loader = load_binaryMNIST(_batch_size)
-    elif dataset == "fashionmnist"
+    elif dataset in ["fashionmnist","FashionMnist", "FashionMNIST"]:
         train_loader, test_loader = load_FashionMNIST(_batch_size)
-    elif dataset == "binarycifar10"
+    elif dataset in ["binarycifar10", "BinaryCifar10", "BinaryCIFAR10"]:
         train_loader, test_loader = load_binaryCIFAR(_batch_size)
+    else:
+        raise NotImplementedError("Dataset not included")
         
     return train_loader, test_loader
     
@@ -40,6 +43,11 @@ def load_binaryMNIST(batch_size):
 
     train_loader = DataLoader(mnist_train, batch_size = batch_size, shuffle=True)
     test_loader = DataLoader(mnist_test, batch_size = batch_size, shuffle=True)
+    
+    class_holder = ['0 - zero',
+                    '1 - one']
+    train_loader.dataset.classes = class_holder
+    test_loader.dataset.classes = class_holder
     
     return train_loader, test_loader
 
@@ -79,6 +87,11 @@ def load_grayCIFAR(batch_size):
     
     train_loader = DataLoader(data_train, batch_size = batch_size, shuffle=True)
     test_loader = DataLoader(data_test, batch_size = batch_size, shuffle=True)
+    
+    class_holder = ['0 - zero',
+                    '1 - one']
+    train_loader.dataset.classes = class_holder
+    test_loader.dataset.classes = class_holder
 
     return train_loader, test_loader
 
@@ -118,5 +131,10 @@ def load_binaryCIFAR(batch_size, target1=1, target2=5):
     
     train_loader = DataLoader(data_train, batch_size = batch_size, shuffle=True)
     test_loader = DataLoader(data_test, batch_size = batch_size, shuffle=True)
+    
+    class_holder = ['0 - zero',
+                    '1 - one']
+    train_loader.dataset.classes = class_holder
+    test_loader.dataset.classes = class_holder
     
     return train_loader, test_loader

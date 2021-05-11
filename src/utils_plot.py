@@ -66,9 +66,9 @@ def plot_theta_tilde_NN_conv(theta_tilde_log, numb_ckpt):
     hidden_d = theta_tilde.shape[0]
     iteration = theta_tilde.shape[3]
     
-    fig = plt.figure(figsize = [25,10])
+    fig = plt.figure(figsize = [25,hidden_d*2])
     fig.patch.set_facecolor('white')
-    gs = fig.add_gridspec(5,1)
+    gs = fig.add_gridspec(hidden_d,1)
     
     itr_freq = iteration//numb_ckpt # theta_tilde(dct_basis_freq * j)
     itr_2plot = torch.range(start = 1, end = iteration, step = itr_freq).tolist()
@@ -81,7 +81,7 @@ def plot_theta_tilde_NN_conv(theta_tilde_log, numb_ckpt):
     delta_theta_tilde = torch.abs(theta_tilde_shifted_by_1 - theta_tilde_remove_last)
     
 #     ipdb.set_trace()
-    for i in range(5):
+    for i in range(hidden_d):
         pl = torch.cat([delta_theta_tilde[i,:,:,j] for j in range(len(itr_2plot)) ], dim = 1)
         p1 = fig.add_subplot(gs[i,0]).imshow(pl.detach().cpu().numpy(), aspect = "auto", cmap = "Blues")
         fig.colorbar(p1)
@@ -89,7 +89,7 @@ def plot_theta_tilde_NN_conv(theta_tilde_log, numb_ckpt):
         fig.add_subplot(gs[i,0]).set_ylabel(r"$|\Delta\tilde{\theta}_{"+ str(int(i))+"}|$", fontsize = 15,rotation=0, labelpad=25)
         fig.add_subplot(gs[i,0]).set_xticklabels([int(itr_2plot[j]) for j in range(len(itr_2plot))], minor = False)
         fig.add_subplot(gs[i,0]).set_xticks(np.arange(start = input_d/2 -1, stop = pl.shape[1], step = input_d), minor = False)
-    fig.add_subplot(gs[4,0]).set_xlabel("Iteration", fontsize = 15)
+    fig.add_subplot(gs[-1,0]).set_xlabel("Iteration", fontsize = 15)
     fig.tight_layout()
 
 

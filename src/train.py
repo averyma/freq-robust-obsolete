@@ -173,10 +173,11 @@ def train_NN_synthetic(loader, args, model, opt, log_theta_tilde, device):
     log_dict = defaultdict(lambda: list())
     
     if log_theta_tilde:
-        numb_theta_logged = 5
+        numb_theta_logged = log_theta_tilde
         theta_tilde_logger = torch.zeros(numb_theta_logged, _input_d, _iteration, device = device)
         dct_matrix = getDCTmatrix(_input_d).to(device)
-        random_theta_m_index = torch.randint(low=0, high = _hidden_d, size = (numb_theta_logged,))
+        while len(random_theta_m_index.unique()) != numb_theta_logged:
+            random_theta_m_index = torch.randint(low=0, high = _hidden_d, size = (numb_theta_logged,))
     
     loss_logger = torch.zeros(1, _iteration, device = device)
     acc_logger = torch.zeros(1, _iteration, device = device)
@@ -197,7 +198,7 @@ def train_NN_synthetic(loader, args, model, opt, log_theta_tilde, device):
                 
                 y_hat = model(x)
 
-                if _output_d == 1:
+                if len(loader.dataset.classes) == 2:
                     y = y.float().view(-1,1)
                     loss = torch.nn.BCEWithLogitsLoss()(y_hat, y)
                     batch_correct = ((y_hat > 0) == (y==1)).sum().item()
@@ -249,10 +250,12 @@ def train_NN_real(loader, args, model, opt, log_theta_tilde, device):
     log_dict = defaultdict(lambda: list())
     
     if log_theta_tilde:
-        numb_theta_logged = 5
+        numb_theta_logged = log_theta_tilde
         theta_tilde_logger = torch.zeros(numb_theta_logged, _input_d, _input_d, _iteration)
         dct_matrix = getDCTmatrix(_input_d).to(device)
         random_theta_m_index = torch.randint(low=0, high = _hidden_d, size = (numb_theta_logged,))
+        while len(random_theta_m_index.unique()) != numb_theta_logged:
+            random_theta_m_index = torch.randint(low=0, high = _hidden_d, size = (numb_theta_logged,))
     
     loss_logger = torch.zeros(1, _iteration, device = device)
     acc_logger = torch.zeros(1, _iteration, device = device)
@@ -279,7 +282,7 @@ def train_NN_real(loader, args, model, opt, log_theta_tilde, device):
 #                 else:
                 y_hat = model(x)
 
-                if _output_d == 1:
+                if len(loader.dataset.classes) == 2:
                     y = y.float().view(-1,1)
                     loss = torch.nn.BCEWithLogitsLoss()(y_hat, y)
                     batch_correct = ((y_hat > 0) == (y==1)).sum().item()
