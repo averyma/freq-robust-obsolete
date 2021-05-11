@@ -290,6 +290,7 @@ def train_NN_real(loader, args, model, opt, log_theta_tilde, device):
                 else:
                     y = y.long()
                     loss = torch.nn.CrossEntropyLoss()(y_hat, y)
+                    ipdb.set_trace()
                     batch_correct = (y_hat.argmax(dim = 1) == y).sum().item()
 
                 loss_logger[:,i] = loss.item()

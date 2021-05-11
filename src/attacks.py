@@ -102,7 +102,8 @@ class pgd_rand_nn(object):
                       'alpha': 2.5*4/100,
                       'num_iter': 100,
                       'restarts': 1,
-                      'loss_fn': nn.CrossEntropyLoss()}
+                      'loss_fn': nn.CrossEntropyLoss(),
+                      'clip': False}
         # parse thru the dictionary and modify user-specific params
         self.parse_param(**kwargs) 
         
@@ -112,7 +113,8 @@ class pgd_rand_nn(object):
         num_iter = self.param['num_iter']
         restarts = self.param['restarts']
         loss_fn = self.param['loss_fn']
-        p_norm = self.param['ord'] 
+        p_norm = self.param['ord']
+        clip = self.param["clip"]
         
         # implementation begins:
         max_loss = torch.zeros(y.shape[0]).to(y.device)
@@ -142,7 +144,8 @@ class pgd_rand_nn(object):
                 delta.data = delta.data * 2.0 - 1.0
                 delta_norm = torch.norm(delta.detach(), p = 2 , dim = (1,2,3), keepdim = True).clamp(min = avoid_zero_div)
                 delta.data = epsilon * delta.data/delta_norm
-                delta.data = (x.data + delta.data).clamp(min = 0., max = 1.) - x.data
+                if clip:
+                    delta.data = (x.data + delta.data).clamp(min = 0., max = 1.) - x.data
                 for t in range(num_iter):
                     model.zero_grad()
 #                     loss = loss_fn(model(x + delta), y.float().view(-1,1))
@@ -168,7 +171,8 @@ class pgd_rand_nn(object):
                     factor = torch.min(epsilon/delta_norm, torch.tensor(1., device = x.device ))
 
                     delta.data = delta.data * factor
-                    delta.data = (x.data + delta.data).clamp(min = 0., max = 1.) - x.data
+                    if clip:
+                        delta.data = (x.data + delta.data).clamp(min = 0., max = 1.) - x.data
 
                     delta.grad.zero_()
             else: 
@@ -237,7 +241,6 @@ class fgsm_nn(object):
 #                     loss = loss_fn(model(x + delta), y.float().view(-1,1))
 #                     ipdb.set_trace()
             if len(y.unique()) > 2:
-
                 loss = loss_fn(model(x + delta), y.long())
             else:
 

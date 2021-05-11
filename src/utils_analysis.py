@@ -18,7 +18,7 @@ def computeSensitivityMap(loader, model, eps, dim, numb_inputs, clip, device):
                 t.update()
     return sens_map
 
-def avg_attack_DCT(loader, model, eps, dim, attack, device):
+def avg_attack_DCT(loader, model, eps, dim, attack, clip, device):
     dct_delta = torch.zeros(dim,dim, device=device)
     
     if attack == "pgd":
@@ -27,11 +27,13 @@ def avg_attack_DCT(loader, model, eps, dim, attack, device):
                  'alpha': 2.5*eps/100.,
                  'num_iter': 100,
                  'restarts': 1,
-                 'loss_fn': nn.CrossEntropyLoss()}
+                 'loss_fn': nn.CrossEntropyLoss(),
+                 'clip': clip}
     elif attack == "fgsm":
         param = {'ord': 2,
-             'epsilon': eps,
-             'loss_fn': nn.CrossEntropyLoss()}
+                 'epsilon': eps,
+                 'loss_fn': nn.CrossEntropyLoss(),
+                 'clip': clip}
         
     
     if len(loader.dataset.classes) == 2:
@@ -75,11 +77,13 @@ def single_image_freq_exam(loader, model, eps, attack, clip, device):
                  'alpha': 2.5*eps/100.,
                  'num_iter': 100,
                  'restarts': 1,
-                 'loss_fn': nn.CrossEntropyLoss()}
+                 'loss_fn': nn.CrossEntropyLoss(),
+                 'clip': clip}
     elif attack == "fgsm":
         param = {'ord': 2,
                  'epsilon': eps,
-                 'loss_fn': nn.CrossEntropyLoss()}
+                 'loss_fn': nn.CrossEntropyLoss(),
+                'clip': clip}
     
     if len(loader.dataset.classes) == 2:
         param["loss_fn"] = torch.nn.BCEWithLogitsLoss()
@@ -129,50 +133,50 @@ def single_image_freq_exam(loader, model, eps, attack, clip, device):
             sens_map[i,j] = pos_true*neg_true
     
     eps_map = torch.zeros(X.shape[2],X.shape[2], device = device)
-    with trange(X.shape[2]**2) as t:
-        for i in range(X.shape[2]):
-            for j in range(X.shape[3]):
-                k = 0
-                neg_true = 1
-                pos_true = 1
-                while neg_true ==1 and pos_true==1: #both correct
-                    k += 1
-                    dct_delta = torch.zeros(1,1,X.shape[2],X.shape[2], device = device)
+#     with trange(X.shape[2]**2) as t:
+#         for i in range(X.shape[2]):
+#             for j in range(X.shape[3]):
+#                 k = 0
+#                 neg_true = 1
+#                 pos_true = 1
+#                 while neg_true ==1 and pos_true==1: #both correct
+#                     k += 1
+#                     dct_delta = torch.zeros(1,1,X.shape[2],X.shape[2], device = device)
 
-                    dct_delta[0,0,i,j] = k
-                    delta_pos = idct2(dct_delta).view(1,1,X.shape[2],X.shape[2])
-                    dct_delta[0,0,i,j] = -k
-                    delta_neg = idct2(dct_delta).view(1,1,X.shape[2],X.shape[2])
+#                     dct_delta[0,0,i,j] = k
+#                     delta_pos = idct2(dct_delta).view(1,1,X.shape[2],X.shape[2])
+#                     dct_delta[0,0,i,j] = -k
+#                     delta_neg = idct2(dct_delta).view(1,1,X.shape[2],X.shape[2])
 
-    #                 ipdb.set_trace()
-                    model.eval()
-                    if clip:
-                        y_hat_pos = model((X+delta_pos).clamp(min = 0, max = 1))
-                        y_hat_neg = model((X+delta_neg).clamp(min = 0, max = 1))
-                    else:
-                        y_hat_pos = model(X+delta_pos)
-                        y_hat_neg = model(X+delta_neg)
+#     #                 ipdb.set_trace()
+#                     model.eval()
+#                     if clip:
+#                         y_hat_pos = model((X+delta_pos).clamp(min = 0, max = 1))
+#                         y_hat_neg = model((X+delta_neg).clamp(min = 0, max = 1))
+#                     else:
+#                         y_hat_pos = model(X+delta_pos)
+#                         y_hat_neg = model(X+delta_neg)
 
-                    if len(loader.dataset.classes) == 2:
-                        y = y.float().view(-1,1)
-                        pos_true = ((y_hat_pos > 0) == (y==1)).sum().item()
-                        neg_true = ((y_hat_neg > 0) == (y==1)).sum().item()
-                    else:
-                        y = y.long()
-                        pos_true = (y_hat_pos.argmax(dim = 1) == y).sum().item()
-                        neg_true = (y_hat_neg.argmax(dim = 1) == y).sum().item()
+#                     if len(loader.dataset.classes) == 2:
+#                         y = y.float().view(-1,1)
+#                         pos_true = ((y_hat_pos > 0) == (y==1)).sum().item()
+#                         neg_true = ((y_hat_neg > 0) == (y==1)).sum().item()
+#                     else:
+#                         y = y.long()
+#                         pos_true = (y_hat_pos.argmax(dim = 1) == y).sum().item()
+#                         neg_true = (y_hat_neg.argmax(dim = 1) == y).sum().item()
                         
-                    t.set_postfix(i = '{0:.2f}'.format(i),
-                                  j = '{0:.2f}'.format(j),
-                                  k = '{0:.2f}'.format(k))
+#                     t.set_postfix(i = '{0:.2f}'.format(i),
+#                                   j = '{0:.2f}'.format(j),
+#                                   k = '{0:.2f}'.format(k))
                 
                     
-                    if k ==100:
-                        break
-                t.update()
+#                     if k ==100:
+#                         break
+#                 t.update()
 
 
-                eps_map[i,j] = k
+#                 eps_map[i,j] = k
     
     return X, dct_X, attack_delta, dct_attack_delta, sens_map, eps_map
 
@@ -207,8 +211,8 @@ def test_freq_sensitivity(loader, model, eps, x, y, size, numb_inputs, clip, dev
                 y_hat_pos = model((X+delta_pos).clamp(min = 0, max = 1))
                 y_hat_neg = model((X+delta_neg).clamp(min = 0, max = 1))
             else:
-                y_hat_pos = model((X+delta_pos).clamp(min = 0, max = 1))
-                y_hat_neg = model((X+delta_neg).clamp(min = 0, max = 1))
+                y_hat_pos = model((X+delta_pos))
+                y_hat_neg = model((X+delta_neg))
             
             if len(loader.dataset.classes) == 2:
                 y = y.float().view(-1,1)

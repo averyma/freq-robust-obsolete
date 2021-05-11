@@ -227,9 +227,7 @@ def synthesizeData(case = 1, d = 10, batchsize = 128, mu = 1, std = 0.5, lambbda
         for i in range(10):
             x_tilde[i*class_bs : (i+1)*class_bs,0,:cor_region,:cor_region] = torch.normal(mean = mu * (i+1), std = std, size = (class_bs,cor_region,cor_region))
             y[i*class_bs : (i+1)*class_bs] = i
-            
-#         ipdb.set_trace()
-        
+                    
     else:
         raise NotImplementedError("CASE NOT IMPLEMENTED")
     
