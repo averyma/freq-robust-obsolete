@@ -246,7 +246,7 @@ class fgsm_nn(object):
 
                 loss = loss_fn(model(x + delta), y.float().view(-1,1))
             loss.backward()
-
+#             ipdb.set_trace()
             # computing norm of loss gradient wrt input
             # To avoid zero division, cleverhans uses 1e-12, advertorch uses 1e-6
 #                 grad_norm = torch.norm(delta.grad.detach().view(-1, _dim), p = 2 , dim = 1).view(x.shape[0],1,1,1).clamp(min = avoid_zero_div)

@@ -3,6 +3,9 @@ import torch.nn as nn
 from src.attacks import pgd_rand, pgd_rand_nn, fgsm_nn
 from src.context import ctx_noparamgrad_and_eval
 from src.utils_freq import rgb2gray, dct, dct2, idct, idct2, batch_dct2, batch_idct2, getDCTmatrix
+
+import scipy.fft
+import numpy as np
 import ipdb
 from tqdm import trange
 
@@ -18,6 +21,11 @@ def computeSensitivityMap(loader, model, eps, dim, numb_inputs, clip, device):
                 t.update()
     return sens_map
 
+def data_l2_norm(loader, device):
+    avg_norm = torch.norm(loader.dataset.tensors[0], p=2, dim = (2,3)).mean().item()
+    std_norm = torch.norm(loader.dataset.tensors[0], p=2, dim = (2,3)).std().item()
+    return avg_norm, std_norm
+    
 def avg_attack_DCT(loader, model, eps, dim, attack, clip, device):
     dct_delta = torch.zeros(dim,dim, device=device)
     
@@ -35,7 +43,6 @@ def avg_attack_DCT(loader, model, eps, dim, attack, clip, device):
                  'loss_fn': nn.CrossEntropyLoss(),
                  'clip': clip}
         
-    
     if len(loader.dataset.classes) == 2:
         param["loss_fn"] = torch.nn.BCEWithLogitsLoss()
         
@@ -54,53 +61,63 @@ def avg_attack_DCT(loader, model, eps, dim, attack, clip, device):
             elif attack == "fgsm":
                 delta = fgsm_nn(**param).generate(model, X, y)
                 
-            dct_delta += batch_dct2(delta, dct_matrix).sum(dim=0)
+            dct_delta += batch_dct2(delta, dct_matrix).abs().sum(dim=0)
+#             dct_delta += batch_dct2(delta, dct_matrix).sum(dim=0)
             
             t.update()
         
     dct_delta = dct_delta / len(loader.dataset)
     return dct_delta
 
-def single_image_freq_exam(loader, model, eps, attack, clip, device):
+def single_image_freq_exam(loader, model, eps, clip, device):
     
     
     for X,y in loader:
         model.eval()
         X,y = X.to(device), y.to(device)
+        
+        y_hat = model(X)
+        if len(loader.dataset.classes) == 2:
+            y = y.float().view(-1,1)
+            correct = ((y_hat > 0) == (y==1))
+        else:
+            y = y.long()
+            correct = (y_hat.argmax(dim = 1) == y)
+        # makes sure that we are examine an image that can 
+        # be classified correctly without perturbation
+        X = X[correct.squeeze() ==True, :,:,:]
+        y = y[correct.squeeze() ==True]
         break
     
-    
-    
-    if attack == "pgd":
-        param = {'ord': 2,
+    pgd_param = {'ord': 2,
                  'epsilon': eps,
                  'alpha': 2.5*eps/100.,
                  'num_iter': 100,
                  'restarts': 1,
                  'loss_fn': nn.CrossEntropyLoss(),
                  'clip': clip}
-    elif attack == "fgsm":
-        param = {'ord': 2,
+    
+    fgsm_param = {'ord': 2,
                  'epsilon': eps,
                  'loss_fn': nn.CrossEntropyLoss(),
-                'clip': clip}
+                 'clip': clip}
     
     if len(loader.dataset.classes) == 2:
-        param["loss_fn"] = torch.nn.BCEWithLogitsLoss()
+        fgsm_param["loss_fn"] = torch.nn.BCEWithLogitsLoss()
+        pgd_param["loss_fn"] = torch.nn.BCEWithLogitsLoss()
         
     
-    if attack == "pgd":
-        attack_delta = pgd_rand_nn(**param).generate(model, X, y)[0,:,:,:]
-    elif attack == "fgsm":
-        attack_delta = fgsm_nn(**param).generate(model, X, y)[0,:,:,:]
+    pgd = pgd_rand_nn(**pgd_param).generate(model, X, y)[0,:,:,:]
+    fgsm = fgsm_nn(**fgsm_param).generate(model, X, y)[0,:,:,:]
+    
+#     ipdb.set_trace()
                 
     X = X[0,:,:,:].view(1,1,X.shape[2],X.shape[3])
     y = y[0].view(1)
-    
     dct_matrix = getDCTmatrix(X.shape[2])
-    dct_attack_delta = batch_dct2(attack_delta, dct_matrix)
-    dct_X = batch_dct2(X, dct_matrix)
-    
+    dct_fgsm = batch_dct2(fgsm, dct_matrix).abs()
+    dct_pgd = batch_dct2(pgd, dct_matrix).abs()
+    dct_X = batch_dct2(X, dct_matrix).abs()
     
     sens_map = torch.zeros(X.shape[2],X.shape[2], device = device)
     for i in range(X.shape[2]):
@@ -132,7 +149,7 @@ def single_image_freq_exam(loader, model, eps, attack, clip, device):
 #             ipdb.set_trace()
             sens_map[i,j] = pos_true*neg_true
     
-    eps_map = torch.zeros(X.shape[2],X.shape[2], device = device)
+#     eps_map = torch.zeros(X.shape[2],X.shape[2], device = device)
 #     with trange(X.shape[2]**2) as t:
 #         for i in range(X.shape[2]):
 #             for j in range(X.shape[3]):
@@ -178,17 +195,28 @@ def single_image_freq_exam(loader, model, eps, attack, clip, device):
 
 #                 eps_map[i,j] = k
     
-    return X, dct_X, attack_delta, dct_attack_delta, sens_map, eps_map
+    return X, dct_X, fgsm, dct_fgsm, pgd, dct_pgd, sens_map
 
 def avg_x_DCT(loader, dim, device):
     dct_matrix = getDCTmatrix(dim)
     dct_X = torch.zeros(dim,dim, device=device)
     for X,y in loader:
-        X, y = X.to(device), y.to(device)
-        dct_X += batch_dct2(X, dct_matrix).sum(dim=0)
-    
+        X = X.to(device)
+        dct_X += batch_dct2(X, dct_matrix).abs().sum(dim=0)
+#         dct_X += batch_dct2(X, dct_matrix).sum(dim=0)
     dct_X = dct_X / len(loader.dataset)
     return dct_X.squeeze()
+
+
+def avg_x_FFT(loader, dim, device):
+    fft_X = np.zeros((dim,dim),dtype=np.float)
+    for X,y in loader:
+        X = X.cpu().numpy()
+#         fft_X += scipy.fft.fft2(X).sum(axis = 0).squeeze()
+        fft_X += np.abs(scipy.fft.fft2(X)).sum(axis = 0).squeeze()
+#         break
+    fft_X = np.fft.fftshift(fft_X / len(loader.dataset))
+    return fft_X.squeeze()
 
 
 def test_freq_sensitivity(loader, model, eps, x, y, size, numb_inputs, clip, device):
@@ -216,17 +244,14 @@ def test_freq_sensitivity(loader, model, eps, x, y, size, numb_inputs, clip, dev
             
             if len(loader.dataset.classes) == 2:
                 y = y.float().view(-1,1)
-                batch_correct_pos = ((y_hat_pos > 0) == (y==1)).sum().item()
-                batch_correct_neg = ((y_hat_neg > 0) == (y==1)).sum().item()
+                batch_correct_pos = ((y_hat_pos > 0) == (y==1))
+                batch_correct_neg = ((y_hat_neg > 0) == (y==1))
+                batch_correct = (batch_correct_neg*batch_correct_pos).sum().item()
             else:
                 y = y.long()
-                batch_correct_pos = (y_hat_pos.argmax(dim = 1) == y).sum().item()
-                batch_correct_neg = (y_hat_neg.argmax(dim = 1) == y).sum().item()
-                
-        if batch_correct_pos > batch_correct_neg:
-            batch_correct = batch_correct_neg
-        else:
-            batch_correct = batch_correct_pos
+                batch_correct_pos = (y_hat_pos.argmax(dim = 1) == y)
+                batch_correct_neg = (y_hat_neg.argmax(dim = 1) == y)
+                batch_correct = (batch_correct_neg*batch_correct_pos).sum().item()
         
         total_correct += batch_correct
         

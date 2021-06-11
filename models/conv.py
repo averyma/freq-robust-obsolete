@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
+import ipdb
+
 class c1(nn.Module):
     '''c1 implemented in "Hessian-based analysis of Large batch trainig and robustness to adversaries"'''
     def __init__(self):
@@ -83,7 +85,7 @@ class c2(nn.Module):
 
 class c3(nn.Module):
     '''c3 implemented in "Hessian-based analysis of Large batch trainig and robustness to adversaries"'''
-    def __init__(self, in_dim):
+    def __init__(self):
         super(c3, self).__init__()
         self.conv1 = nn.Conv2d(in_channels = 3, 
                                out_channels = 64, 
@@ -453,24 +455,95 @@ class c12(nn.Module):
         return (x - mean) / adjusted_stddev
 
     def forward(self, x):
-        x = self.per_image_standardization(x)
+        stdard_x = self.per_image_standardization(x)
+        
+        conv_1 = self.conv1(stdard_x)
+        relu_1 = F.relu(conv_1)
+        conv_2 = self.conv2(relu_1)
+        relu_2 = F.relu(conv_2)
+        pool_1 = self.pool(relu_2)
+        
+        conv_3 = self.conv3(pool_1)
+        relu_3 = F.relu(conv_3)
+        conv_4 = self.conv4(relu_3)
+        relu_4 = F.relu(conv_4)
+        pool_2 = self.pool(relu_4)
+        
+        conv_5 = self.conv5(pool_2)
+        relu_5 = F.relu(conv_5)
+        conv_6 = self.conv6(relu_5)
+        relu_6 = F.relu(conv_6)
+        pool_3 = self.pool(relu_6)
+        
+        flatten = pool_3.view(-1, 196 * 4 * 4)
+        fc = self.fc1(flatten)
+        relu_7 = F.relu(fc)
+        fc_2 = self.fc2(relu_7)
+        
+        intermediate = {"conv_1":conv_1,
+                        "relu_1":relu_1,
+                        "conv_2":conv_2,
+                        "relu_2":relu_2,
+                        "pool_1":pool_1,
+                        "conv_3":conv_3,
+                        "relu_3":relu_3,
+                        "conv_4":conv_4,
+                        "relu_4":relu_4,
+                        "pool_2":pool_2,
+                        "conv_5":conv_5,
+                        "relu_5":relu_5,
+                        "conv_6":conv_6,
+                        "relu_6":relu_6,
+                        "pool_3":pool_3,
+                        "flatten":flatten,
+                        "fc":fc,
+                        "relu_7":relu_7,
+                        "fc_2":fc_2}
+        return fc_2, intermediate
 
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = self.pool(x)
+# class c12(nn.Module):
+#     """
+#     The 8-layer conv net model used in: https://github.com/YisenWang/dynamic_adv_training/blob/master/models.py. 
+#     BN removed
+#     """
+#     def __init__(self):
+#         super(c12, self).__init__()
+#         self.conv1 = nn.Conv2d(3, 64, 3, padding=1)
+#         self.conv2 = nn.Conv2d(64, 64, 3, padding=1)
+#         self.conv3 = nn.Conv2d(64, 128, 3, padding=1)
+#         self.conv4 = nn.Conv2d(128, 128, 3, padding=1)
+#         self.conv5 = nn.Conv2d(128, 196, 3, padding=1)
+#         self.conv6 = nn.Conv2d(196, 196, 3, padding=1)
+#         self.fc1 = nn.Linear(196 * 4 * 4, 256)
+#         self.fc2 = nn.Linear(256, 10)
+#         self.pool = nn.MaxPool2d(2, 2)
+
+#     def per_image_standardization(self, x):
+#         _dim = x.shape[1] * x.shape[2] * x.shape[3]
+#         mean = torch.mean(x, dim=(1,2,3), keepdim = True)
+#         stddev = torch.std(x, dim=(1,2,3), keepdim = True)
+#         adjusted_stddev = torch.max(stddev, (1./np.sqrt(_dim)) * torch.ones_like(stddev))
+#         return (x - mean) / adjusted_stddev
+
+#     def forward(self, x):
+#         x = self.per_image_standardization(x)
+
+#         x = F.relu(self.conv1(x))
+#         x = F.relu(self.conv2(x))
+#         x = self.pool(x)
         
-        x = F.relu(self.conv3(x))
-        x = F.relu(self.conv4(x))
-        x = self.pool(x)
+#         x = F.relu(self.conv3(x))
+#         x = F.relu(self.conv4(x))
+#         x = self.pool(x)
         
-        x = F.relu(self.conv5(x))
-        x = F.relu(self.conv6(x))
-        x = self.pool(x)
+#         x = F.relu(self.conv5(x))
+#         x = F.relu(self.conv6(x))
+#         x = self.pool(x)
         
-        x = x.view(-1, 196 * 4 * 4)
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        return x
+#         x = x.view(-1, 196 * 4 * 4)
+#         x = F.relu(self.fc1(x))
+#         x = self.fc2(x)
+#         return x
     
 class c13(nn.Module):
     """
@@ -880,4 +953,49 @@ class c23(nn.Module):
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return x
+    
+class c24(nn.Module):
+    """
+    The 8-layer conv net model used in: https://github.com/YisenWang/dynamic_adv_training/blob/master/models.py. 
+    BN removed
+    """
+    def __init__(self):
+        super(c24, self).__init__()
+        self.conv1 = nn.Conv2d(3, 64, 3, padding=1)
+        self.conv2 = nn.Conv2d(64, 64, 3, padding=1)
+        self.conv3 = nn.Conv2d(64, 128, 3, padding=1)
+        self.conv4 = nn.Conv2d(128, 128, 3, padding=1)
+#         self.conv5 = nn.Conv2d(128, 196, 3, padding=1)
+#         self.conv6 = nn.Conv2d(196, 196, 3, padding=1)
+        self.fc1 = nn.Linear(8192, 256)
+        self.fc2 = nn.Linear(256, 10)
+        self.pool = nn.MaxPool2d(2, 2)
+
+#     def per_image_standardization(self, x):
+#         _dim = x.shape[1] * x.shape[2] * x.shape[3]
+#         mean = torch.mean(x, dim=(1,2,3), keepdim = True)
+#         stddev = torch.std(x, dim=(1,2,3), keepdim = True)
+#         adjusted_stddev = torch.max(stddev, (1./np.sqrt(_dim)) * torch.ones_like(stddev))
+#         return (x - mean) / adjusted_stddev
+
+    def forward(self, x):
+#         x = self.per_image_standardization(x)
+
+        x = F.relu(self.conv1(x))
+        x = F.relu(self.conv2(x))
+        x = self.pool(x)
+        
+        x = F.relu(self.conv3(x))
+        x = F.relu(self.conv4(x))
+        x = self.pool(x)
+        
+#         x = F.relu(self.conv5(x))
+#         x = F.relu(self.conv6(x))
+#         x = self.pool(x)
+        
+        x = x.view(-1, 8192)
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        return x
+
 

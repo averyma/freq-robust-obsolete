@@ -259,6 +259,8 @@ def train_NN_real(loader, args, model, opt, log_theta_tilde, device):
     
     loss_logger = torch.zeros(1, _iteration, device = device)
     acc_logger = torch.zeros(1, _iteration, device = device)
+    u_logger = torch.zeros(2, _iteration, device = device)
+    
     
     i = 0
     with trange(_iteration) as t:
@@ -269,6 +271,7 @@ def train_NN_real(loader, args, model, opt, log_theta_tilde, device):
 #                     ipdb.set_trace()
                     theta = model.state_dict()["conv1.weight"].detach()[random_theta_m_index,:,:,:]
                     theta_tilde_logger[:,:,:,i] =  batch_dct2(theta, dct_matrix)
+#                     u_logger[:,i] = model.state_dict()['linear2.weight'].squeeze().detach()
 
                 x, y = x.to(device), y.to(device)
                 x_len = x.shape[0]
@@ -290,7 +293,6 @@ def train_NN_real(loader, args, model, opt, log_theta_tilde, device):
                 else:
                     y = y.long()
                     loss = torch.nn.CrossEntropyLoss()(y_hat, y)
-                    ipdb.set_trace()
                     batch_correct = (y_hat.argmax(dim = 1) == y).sum().item()
 
                 loss_logger[:,i] = loss.item()
@@ -313,5 +315,120 @@ def train_NN_real(loader, args, model, opt, log_theta_tilde, device):
     log_dict["acc"] = acc_logger
     if log_theta_tilde:
         log_dict["theta_tilde"] = theta_tilde_logger
+    log_dict["u"] = u_logger
+    
+    return log_dict
+
+def train_NN_real_lazy(loader, args, model, opt, device):
+    
+    _case = args["case"]
+    _iteration = args["itr"]
+    _output_d = args["output_d"]
+    _input_d = args["input_d"]
+    _hidden_d = args["hidden_d"]
+    _eps = args["eps"]
+    
+    log_dict = defaultdict(lambda: list())
+    
+#     if log_theta_tilde:
+#         numb_theta_logged = log_theta_tilde
+#         theta_tilde_logger = torch.zeros(numb_theta_logged, _input_d, _input_d, _iteration)
+    dct_matrix = getDCTmatrix(_input_d).to(device)
+#         random_theta_m_index = torch.randint(low=0, high = _hidden_d, size = (numb_theta_logged,))
+#         while len(random_theta_m_index.unique()) != numb_theta_logged:
+#             random_theta_m_index = torch.randint(low=0, high = _hidden_d, size = (numb_theta_logged,))
+    
+    loss_logger = torch.zeros(1, _iteration, device = device)
+    acc_logger = torch.zeros(1, _iteration, device = device)
+    u_logger = torch.zeros(2, _iteration, device = device)
+    theta_logger = torch.zeros(5, _iteration, device = device)
+    
+#     ipdb.set_trace()
+    
+    u_prev = model.state_dict()['linear2.weight'].squeeze().clone().detach()
+    theta_unflattened = model.state_dict()["conv1.weight"].clone().detach()
+#     print(u_prev, theta_unflattened)
+#     ipdb.set_trace()
+    theta_prev = torch.flatten(theta_unflattened, start_dim=1, end_dim=-1)
+    theta_tilde_prev = torch.flatten(batch_dct2(theta_unflattened, dct_matrix), start_dim=1, end_dim=-1)
+    
+    u_init = u_prev.clone().detach()
+    theta_init = theta_prev.clone().detach()
+    theta_tilde_init = theta_tilde_prev.clone().detach()
+    
+    i = 0
+    with trange(_iteration) as t:
+        while(i < _iteration):
+            for x, y in loader:
+                
+#                 if log_theta_tilde:
+# #                     ipdb.set_trace()
+#                     theta = model.state_dict()["conv1.weight"].detach()[random_theta_m_index,:,:,:]
+#                     theta_tilde_logger[:,:,:,i] =  batch_dct2(theta, dct_matrix)
+#                     u_logger[:,i] = model.state_dict()['linear2.weight'].squeeze().detach()
+
+                x, y = x.to(device), y.to(device)
+                x_len = x.shape[0]
+                
+                
+                opt.zero_grad()
+                
+#                 if adv: 
+#                     delta = pgd_rand_nn(**param).generate(model, x, y)
+#                     y_hat = model(x+delta)
+#                 else:
+                y_hat = model(x)
+
+                if len(loader.dataset.classes) == 2:
+                    y = y.float().view(-1,1)
+                    loss = torch.nn.BCEWithLogitsLoss()(y_hat, y)
+                    batch_correct = ((y_hat > 0) == (y==1)).sum().item()
+                    
+                else:
+                    y = y.long()
+                    loss = torch.nn.CrossEntropyLoss()(y_hat, y)
+                    batch_correct = (y_hat.argmax(dim = 1) == y).sum().item()
+
+                loss_logger[:,i] = loss.item()
+                batch_acc = batch_correct / x_len * 100
+                acc_logger[:,i] = batch_acc
+
+                loss.backward()
+                opt.step()
+                
+                
+                u_curr = model.state_dict()['linear2.weight'].squeeze().clone().detach()
+                theta_unflattened = model.state_dict()["conv1.weight"].clone().detach()
+#                 print(u_curr, theta_unflattened)
+                theta_curr = torch.flatten(theta_unflattened, start_dim=1, end_dim=-1)
+                theta_tilde_curr = torch.flatten(batch_dct2(theta_unflattened, dct_matrix), start_dim=1, end_dim=-1)
+                
+#                 ipdb.set_trace()
+                
+                
+                u_logger[0,i] = (u_prev-u_curr).abs().mean()
+                u_logger[1,i] = (u_init-u_curr).abs().mean()
+                theta_logger[0,i] = torch.norm((theta_prev-theta_curr).detach(), p =2 , dim = 1).mean()
+                theta_logger[1,i] = torch.norm((theta_tilde_prev-theta_tilde_curr).detach(), p =2, dim = 1).mean()
+                theta_logger[2,i] = torch.norm((theta_init-theta_curr).detach(), p =2 , dim = 1).mean()
+                theta_logger[3,i] = torch.norm((theta_tilde_init-theta_tilde_curr).detach(), p =2, dim = 1).mean()
+                
+                u_prev = u_curr
+                theta_prev = theta_curr
+                theta_tilde_prev = theta_tilde_curr
+
+                
+                i += 1
+                
+                t.set_postfix(loss = loss.item(),
+                              acc = '{0:.2f}%'.format(batch_acc))
+                t.update()
+                if i == _iteration:
+                    break
+    
+    log_dict["loss"] = loss_logger
+    log_dict["acc"] = acc_logger
+    log_dict["theta_tilde"] = theta_logger
+    log_dict["u"] = u_logger
     
     return log_dict

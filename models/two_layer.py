@@ -43,7 +43,7 @@ class two_layer_conv(nn.Module):
 
     def forward(self, x):
         output = self.activation(self.conv1(x)[:,:,0,0])
-#         output = torch.sigmoid()
+#         output = self.linear2(output)
         output = self.linear2(output)
         return output
     

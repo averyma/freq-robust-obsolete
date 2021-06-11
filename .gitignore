@@ -13,3 +13,5 @@
 /notebook/__pycache__/
 /NTK-and-MF-examples/
 /notebook/
+figure*
+other_figure/

@@ -13,6 +13,10 @@ def load_RealDataset(dataset, _batch_size = 128):
         train_loader, test_loader = load_FashionMNIST(_batch_size)
     elif dataset in ["binarycifar10", "BinaryCifar10", "BinaryCIFAR10"]:
         train_loader, test_loader = load_binaryCIFAR(_batch_size)
+    elif dataset in ["cifar", "CIFAR","cifar10","CIFAR10"]:
+        train_loader, test_loader = load_CIFAR(_batch_size)
+    elif dataset in ["graycifar", "grayCIFAR","graycifar10","grayCIFAR10"]:
+        train_loader, test_loader = load_grayCIFAR(_batch_size)
     else:
         raise NotImplementedError("Dataset not included")
         
@@ -35,7 +39,6 @@ def load_binaryMNIST(batch_size):
     
     mnist_train.targets = mnist_train.targets[idx_train]
     mnist_test.targets = mnist_test.targets[idx_test]
-    
 
     # label 0: 3, label 1: 7 
     mnist_train.targets = ((mnist_train.targets - 3)/4).float()
@@ -137,4 +140,21 @@ def load_binaryCIFAR(batch_size, target1=1, target2=5):
     train_loader.dataset.classes = class_holder
     test_loader.dataset.classes = class_holder
     
+    return train_loader, test_loader
+
+def load_CIFAR(batch_size):
+    transform_train = transforms.Compose([
+        transforms.RandomCrop(32, padding = 4),
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor()])
+
+    transform_test = transforms.Compose([
+        transforms.ToTensor()])
+
+    data_train = datasets.CIFAR10("./data", train=True, download = True, transform=transform_train)
+    data_test = datasets.CIFAR10("./data", train=False, download = True, transform=transform_test)
+    
+    train_loader = DataLoader(data_train, batch_size = batch_size, shuffle=True)
+    test_loader = DataLoader(data_test, batch_size = batch_size, shuffle=True)
+
     return train_loader, test_loader
