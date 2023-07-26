@@ -23,8 +23,6 @@ from src.utils_dataset import load_dataset, load_IMAGENET_C
 from src.utils_log import metaLogger, rotateCheckpoint, wandbLogger, saveModel, delCheckpoint
 from src.utils_general import seed_everything, get_model, get_optim
 
-import wandb
-
 best_acc1 = 0
 
 def print_args(args):
@@ -36,6 +34,17 @@ def print_args(args):
     for key in optkeys:
         print("{}: {}".format(key, args.__dict__[key]))
 
+def ddp_setup(rank, world_size):
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12345'
+
+    dist.init_process_group(backend='nccl', world_size=world_size, rank=rank)
+
+    torch.cuda.set_device(rank)
+    torch.cuda.empty_cache()
+
+def ddp_cleanup():
+    dist.destroy_process_group()
 
 def main():
     args = get_args()
@@ -51,9 +60,6 @@ def main():
     else:
         ngpus_per_node = 1
 
-    # args.gpu=None
-    # args.print_freq=10
-
     if args.multiprocessing_distributed:
         # Since we have ngpus_per_node processes per node, the total world_size
         # needs to be adjusted accordingly
@@ -64,19 +70,6 @@ def main():
     else:
         # Simply call main_worker function
         main_worker(args.gpu, ngpus_per_node, args)
-
-def ddp_setup(rank, world_size):
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12345'
-
-    dist.init_process_group(backend='nccl', world_size=world_size, rank=rank)
-
-    torch.cuda.set_device(rank)
-    torch.cuda.empty_cache()
-
-def ddp_cleanup():
-    dist.destroy_process_group()
-
 
 def main_worker(gpu, ngpus_per_node, args):
     
@@ -198,91 +191,84 @@ def main_worker(gpu, ngpus_per_node, args):
         print('This is the device: {} for the main task!'.format(device))
         # was hanging on wandb 0.12.9, fixed after upgrading to 0.15.7
         wandb_logger = wandbLogger(args)
-        print('we hereeeee device {}'.format(device))
         logger = metaLogger(args)
         logging.basicConfig(
             filename=args.j_dir+ "/log/log.txt",
             format='%(asctime)s %(message)s', level=logging.INFO)
         logging.getLogger().addHandler(logging.StreamHandler(sys.stdout))
-    else:
-        print('*********************This is the device: {}!'.format(device))
-    dist.barrier()
 
-    # print('cleanup incoming')
-    # ddp_cleanup()
-
-    # train_loader, test_loader, train_sampler, val_sampler = load_dataset(
-                # args.dataset,
-                # args.batch_size,
-                # args.op_name,
-                # args.op_prob,
-                # args.op_magnitude,
-                # args.workers,
-                # args.distributed
-                # )
+    train_loader, test_loader, train_sampler, val_sampler = load_dataset(
+                args.dataset,
+                args.batch_size,
+                args.op_name,
+                args.op_prob,
+                args.op_magnitude,
+                args.workers,
+                args.distributed
+                )
 
 ##########################################################
 ###################### Training begins ###################
 ##########################################################
-    # dist.barrier()
-    # for _epoch in range(ckpt_epoch, args.epoch+1):
-        # if args.distributed:
-            # train_sampler.set_epoch(_epoch)
+    dist.barrier()
+    for _epoch in range(ckpt_epoch, args.epoch+1):
+        if args.distributed:
+            train_sampler.set_epoch(_epoch)
 
-        # # train for one epoch
-        # if args.optimize_cluster_param:
-            # test_acc1, test_acc5 = 99, 99
-            # train_acc1, train_acc5, loss = 99, 99, 0
-        # else:
-            # dist.barrier()
-            # train_acc1, train_acc5, loss = train(train_loader, model, criterion, opt, _epoch, device, args)
-            # dist.barrier()
-            # test_acc1, test_acc5 = validate(test_loader, model, criterion, args)
-            # dist.barrier()
-        # lr_scheduler.step()
+        # train for one epoch
+        if args.optimize_cluster_param:
+            test_acc1, test_acc5 = 99, 99
+            train_acc1, train_acc5, loss = 99, 99, 0
+        else:
+            dist.barrier()
+            train_acc1, train_acc5, loss = train(train_loader, model, criterion, opt, _epoch, device, args)
+            dist.barrier()
+            test_acc1, test_acc5 = validate(test_loader, model, criterion, args)
+            dist.barrier()
+        lr_scheduler.step()
 
-        # is_best = test_acc1 > best_acc1
-        # best_acc1 = max(test_acc1, best_acc1)
+        is_best = test_acc1 > best_acc1
+        best_acc1 = max(test_acc1, best_acc1)
 
-        # # Logging and checkpointing only at the main task (rank0)
-        # if isMainTask:
-            # logger.add_scalar("train/top1_acc", train_acc1, _epoch)
-            # logger.add_scalar("train/top5_acc", train_acc5, _epoch)
-            # logger.add_scalar("train/loss", loss, _epoch)
-            # logger.add_scalar("lr", opt.param_groups[0]['lr'], _epoch)
-            # logger.add_scalar("test/top1_acc", test_acc1, _epoch)
-            # logger.add_scalar("test/top5_acc", test_acc5, _epoch)
-            # logging.info(
-                # "Epoch: [{0}]\t"
-                # "Train Loss: {loss:.6f}\t"
-                # "Train Accuracy(top1): {train_acc1:.2f}\t"
-                # "Train Accuracy(top5): {train_acc5:.2f}\t"
-                # "Test Accuracy(top1): {test_acc1:.2f}\t"
-                # "Test Accuracy(top5): {test_acc5:.2f}\t".format(
-                    # _epoch,
-                    # loss=loss,
-                    # train_acc1=train_acc1,
-                    # train_acc5=train_acc5,
-                    # test_acc1=test_acc1,
-                    # test_acc5=test_acc5,
-                    # ))
+        # Logging and checkpointing only at the main task (rank0)
+        if isMainTask:
+            logger.add_scalar("train/top1_acc", train_acc1, _epoch)
+            logger.add_scalar("train/top5_acc", train_acc5, _epoch)
+            logger.add_scalar("train/loss", loss, _epoch)
+            logger.add_scalar("lr", opt.param_groups[0]['lr'], _epoch)
+            logger.add_scalar("test/top1_acc", test_acc1, _epoch)
+            logger.add_scalar("test/top5_acc", test_acc5, _epoch)
+            logging.info(
+                "Epoch: [{0}]\t"
+                "Train Loss: {loss:.6f}\t"
+                "Train Accuracy(top1): {train_acc1:.2f}\t"
+                "Train Accuracy(top5): {train_acc5:.2f}\t"
+                "Test Accuracy(top1): {test_acc1:.2f}\t"
+                "Test Accuracy(top5): {test_acc5:.2f}\t".format(
+                    _epoch,
+                    loss=loss,
+                    train_acc1=train_acc1,
+                    train_acc5=train_acc5,
+                    test_acc1=test_acc1,
+                    test_acc5=test_acc5,
+                    ))
 
-            # # checkpointing for preemption
-            # if _epoch % args.ckpt_freq == 0:
-                # # since preemption would happen in the next epoch, so we want to start from {_epoch+1}
-                # rotateCheckpoint(ckpt_dir, "custom_ckpt", model, opt, _epoch+1, best_acc1)
-                # logger.save_log()
+            # checkpointing for preemption
+            if _epoch % args.ckpt_freq == 0:
+                # since preemption would happen in the next epoch, so we want to start from {_epoch+1}
+                rotateCheckpoint(ckpt_dir, "custom_ckpt", model, opt, _epoch+1, best_acc1)
+                logger.save_log()
 
-            # # save best model
-            # if is_best and _epoch > int(args.epoch*3/4):
-                # saveModel(args.j_dir+"/model/", "best_model", model.state_dict())
+            # save best model
+            if is_best and _epoch > int(args.epoch*3/4):
+                saveModel(args.j_dir+"/model/", "best_model", model.state_dict())
 
-        # # Early terminate training when half way thru training and test accuracy still below 20%
-        # if np.isnan(loss) or (_epoch > int(args.epoch/2) and test_acc1 < 20):
-            # print('Early stopping at epoch {}.'.format(_epoch))
-            # actual_trained_epoch = _epoch
-            # saveModel(args.j_dir+"/model/", "final_model", model.state_dict())
-            # break # break the training for-loop
+        # Early terminate training when half way thru training and test accuracy still below 20%
+        if np.isnan(loss) or (_epoch > int(args.epoch/2) and test_acc1 < 20):
+            print('Early stopping at epoch {}.'.format(_epoch))
+            actual_trained_epoch = _epoch
+            saveModel(args.j_dir+"/model/", "final_model", model.state_dict())
+            break # break the training for-loop
 ##########################################################
 ###################### Training ends #####################
 ##########################################################
@@ -344,38 +330,35 @@ def main_worker(gpu, ngpus_per_node, args):
                     # np.array(corruption_acc5).mean(), args.epoch)
 
     # upload runs to wandb:
-    # if isMainTask:
-        # print('Saving final model!')
-        # saveModel(args.j_dir+"/model/", "final_model", model.state_dict())
-        # print('Final model saved!')
-        # print('Final model trained for {} epochs, test accuracy: {}%'.format(actual_trained_epoch, test_acc1))
-        # print('Best model has a test accuracy of {}%'.format(best_acc1))
-        # # if args.enable_wandb:
-            # # wandb_logger = wandbLogger(args)
-            # # wandb_logger.upload(logger, actual_trained_epoch)
-        # if args.enable_wandb:
-            # save_wandb_retry = 0
-            # save_wandb_successful = False
-            # while not save_wandb_successful and save_wandb_retry < 5:
-                # print('Uploading runs to wandb...')
-                # try:
-                    # # wandb_logger = wandbLogger(args)
-                    # wandb_logger.upload(logger, actual_trained_epoch)
-                # except:
-                    # save_wandb_retry += 1
-                    # print('Retry {} times'.format(save_wandb_retry))
-                # else:
-                    # save_wandb_successful = True
+    if isMainTask:
+        print('Saving final model!')
+        saveModel(args.j_dir+"/model/", "final_model", model.state_dict())
+        print('Final model saved!')
+        print('Final model trained for {} epochs, test accuracy: {}%'.format(actual_trained_epoch, test_acc1))
+        print('Best model has a test accuracy of {}%'.format(best_acc1))
+        if args.enable_wandb:
+            save_wandb_retry = 0
+            save_wandb_successful = False
+            while not save_wandb_successful and save_wandb_retry < 5:
+                print('Uploading runs to wandb...')
+                try:
+                    wandb_logger.upload(logger, actual_trained_epoch)
+                except:
+                    save_wandb_retry += 1
+                    print('Retry {} times'.format(save_wandb_retry))
+                else:
+                    save_wandb_successful = True
 
-            # if not save_wandb_successful:
-                # print('Failed at uploading runs to wandb.')
+            if not save_wandb_successful:
+                print('Failed at uploading runs to wandb.')
+            else:
+                wandb_logger.finish()
 
-        # logger.save_log(is_final_result=True)
+        logger.save_log(is_final_result=True)
 
-    # # delete slurm checkpoints
-    # delCheckpoint(args.j_dir, args.j_id)
-    # dist.destroy_process_group()
-    # exit()
+    # delete slurm checkpoints
+    delCheckpoint(args.j_dir, args.j_id)
+    ddp_cleanup()
 
 def train(train_loader, model, criterion, optimizer, epoch, device, args):
     batch_time = AverageMeter('Time', ':6.3f')
