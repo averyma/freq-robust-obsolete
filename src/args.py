@@ -90,6 +90,8 @@ def parse_args():
                         'multi node data parallel training')
     parser.add_argument('--optimize_cluster_param',
                         default=False, type=distutils.util.strtobool)
+    parser.add_argument("--print_freq",
+                        default=argparse.SUPPRESS, type=int)
 
     # eval only:
     parser.add_argument("--eval_only",

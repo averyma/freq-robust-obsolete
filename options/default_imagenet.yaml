@@ -5,11 +5,11 @@ arch: "resnet50"
 log_dir: "./exp/"
 pretrain: ""
 
-# optimization settings
+# optimization settings: https://github.com/pytorch/vision/tree/main/references/classification#resnet
 lr: 0.1
 lr_scheduler_type: "cosine"
 momentum: 0.9
-weight_decay: 0.0002
+weight_decay: 0.0001
 nesterov: True
 batch_size: 128
 seed: 0
@@ -37,3 +37,4 @@ eval_CC: True
 op_name: 'Identity'
 op_prob: 1.
 op_magnitude: 1
+print_freq: 100

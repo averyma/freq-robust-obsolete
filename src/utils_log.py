@@ -217,3 +217,6 @@ class wandbLogger(object):
                     idx = (_epoch+1) == np.array(logger.log_dict[key])[:, 1]
                     wandb_dict[key] = np.array(logger.log_dict[key])[idx, 2]
             self.wandb_log.log(wandb_dict, step=_epoch+1, commit=commit)
+
+    def finish(self):
+        wandb.finish()

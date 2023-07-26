@@ -215,12 +215,15 @@ def main_worker(gpu, ngpus_per_node, args):
         # train for one epoch
         if args.optimize_cluster_param:
             test_acc1, test_acc5 = 99, 99
-            train_acc1, train_acc5, loss = 99, 99, 0
+            # train_acc1, train_acc5, loss = 99, 99, 0
+            dist.barrier()
+            train_acc1, train_acc5, loss = train(train_loader, model, criterion, opt, _epoch, device, args, is_main_task)
+            dist.barrier()
         else:
             dist.barrier()
-            train_acc1, train_acc5, loss = train(train_loader, model, criterion, opt, _epoch, device, args)
+            train_acc1, train_acc5, loss = train(train_loader, model, criterion, opt, _epoch, device, args, is_main_task)
             dist.barrier()
-            test_acc1, test_acc5 = validate(test_loader, model, criterion, args)
+            test_acc1, test_acc5 = validate(test_loader, model, criterion, args, is_main_task)
             dist.barrier()
         lr_scheduler.step()
 
@@ -266,6 +269,7 @@ def main_worker(gpu, ngpus_per_node, args):
             actual_trained_epoch = _epoch
             saveModel(args.j_dir+"/model/", "final_model", model.state_dict())
             break # break the training for-loop
+    dist.barrier()
 ##########################################################
 ###################### Training ends #####################
 ##########################################################
@@ -357,7 +361,7 @@ def main_worker(gpu, ngpus_per_node, args):
     delCheckpoint(args.j_dir, args.j_id)
     ddp_cleanup()
 
-def train(train_loader, model, criterion, optimizer, epoch, device, args):
+def train(train_loader, model, criterion, optimizer, epoch, device, args, is_main_task):
     batch_time = AverageMeter('Time', ':6.3f')
     data_time = AverageMeter('Data', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
@@ -399,12 +403,12 @@ def train(train_loader, model, criterion, optimizer, epoch, device, args):
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if i % args.print_freq == 0:
+        if i % args.print_freq == 0 and is_main_task:
             progress.display(i + 1)
 
     return top1.avg, top5.avg, losses.avg
 
-def validate(val_loader, model, criterion, args):
+def validate(val_loader, model, criterion, args, is_main_task):
 
     def run_validate(loader, base_progress=0):
         with torch.no_grad():
@@ -433,7 +437,7 @@ def validate(val_loader, model, criterion, args):
                 batch_time.update(time.time() - end)
                 end = time.time()
 
-                if i % args.print_freq == 0:
+                if i % args.print_freq == 0 and is_main_task:
                     progress.display(i + 1)
 
     batch_time = AverageMeter('Time', ':6.3f', Summary.NONE)
@@ -461,7 +465,8 @@ def validate(val_loader, model, criterion, args):
             num_workers=args.workers, pin_memory=True)
         run_validate(aux_val_loader, len(val_loader))
 
-    progress.display_summary()
+    if is_main_task:
+        progress.display_summary()
 
     return top1.avg, top5.avg
 
