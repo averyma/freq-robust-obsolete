@@ -74,6 +74,9 @@ def ddp_setup(rank, world_size):
     torch.cuda.set_device(rank)
     torch.cuda.empty_cache()
 
+def ddp_cleanup():
+    dist.destroy_process_group()
+
 
 def main_worker(gpu, ngpus_per_node, args):
     
@@ -112,7 +115,8 @@ def main_worker(gpu, ngpus_per_node, args):
                 # DistributedDataParallel, we need to divide the batch size
                 # ourselves based on the total number of GPUs of the current node.
                 args.batch_size = int(args.batch_size / ngpus_per_node)
-                args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
+                # args.workers = int((args.workers + ngpus_per_node - 1) / ngpus_per_node)
+                args.workers = mp.cpu_count()//max(ngpus_per_node, 1)
                 print("GPU: {}, batch_size: {}, workers: {}".format(args.gpu, args.batch_size, args.workers))
                 model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
             else:
@@ -187,16 +191,13 @@ def main_worker(gpu, ngpus_per_node, args):
 
     actual_trained_epoch = args.epoch
 
-    isMainTask = not args.multiprocessing_distributed or (args.multiprocessing_distributed and args.rank % ngpus_per_node == 0)
+    # isMainTask = not args.multiprocessing_distributed or (args.multiprocessing_distributed and args.rank % ngpus_per_node == 0)
+    isMainTask = gpu==0
 
     if isMainTask:
         print('This is the device: {} for the main task!'.format(device))
-        # wandb_logger = wandbLogger(args)
-        run = wandb.init(name=args.j_dir.split("/")[-1],
-                                    project=args.wandb_project,
-                                    dir=args.j_dir,
-                                    id=str(args.j_id),
-                                    resume=True)
+        # was hanging on wandb 0.12.9, fixed after upgrading to 0.15.7
+        wandb_logger = wandbLogger(args)
         print('we hereeeee device {}'.format(device))
         logger = metaLogger(args)
         logging.basicConfig(
@@ -206,6 +207,9 @@ def main_worker(gpu, ngpus_per_node, args):
     else:
         print('*********************This is the device: {}!'.format(device))
     dist.barrier()
+
+    # print('cleanup incoming')
+    # ddp_cleanup()
 
     # train_loader, test_loader, train_sampler, val_sampler = load_dataset(
                 # args.dataset,
@@ -220,6 +224,7 @@ def main_worker(gpu, ngpus_per_node, args):
 ##########################################################
 ###################### Training begins ###################
 ##########################################################
+    # dist.barrier()
     # for _epoch in range(ckpt_epoch, args.epoch+1):
         # if args.distributed:
             # train_sampler.set_epoch(_epoch)
@@ -235,7 +240,6 @@ def main_worker(gpu, ngpus_per_node, args):
             # test_acc1, test_acc5 = validate(test_loader, model, criterion, args)
             # dist.barrier()
         # lr_scheduler.step()
-        # dist.barrier()
 
         # is_best = test_acc1 > best_acc1
         # best_acc1 = max(test_acc1, best_acc1)
