@@ -34,11 +34,12 @@ def print_args(args):
     for key in optkeys:
         print("{}: {}".format(key, args.__dict__[key]))
 
-def ddp_setup(rank, world_size):
+def ddp_setup(dist_backend, dist_url, rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12345'
 
-    dist.init_process_group(backend='nccl', world_size=world_size, rank=rank)
+    dist.init_process_group(backend=dist_backend, world_size=world_size,
+                            rank=rank, init_method=dist_url)
 
     torch.cuda.set_device(rank)
     torch.cuda.empty_cache()
@@ -73,8 +74,6 @@ def main():
 
 def main_worker(gpu, ngpus_per_node, args):
     
-    ddp_setup(gpu, ngpus_per_node)
-    dist.barrier()
 
     global best_acc1
     args.gpu = gpu
@@ -89,8 +88,8 @@ def main_worker(gpu, ngpus_per_node, args):
             # For multiprocessing distributed training, rank needs to be the
             # global rank among all the processes
             args.rank = args.rank * ngpus_per_node + gpu
-        # dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
-                                # world_size=args.world_size, rank=args.rank)
+        ddp_setup(args.dist_backend, args.dist_url, args.rank, args.world_size)
+        dist.barrier()
 
     model = get_model(args)
 
@@ -177,19 +176,17 @@ def main_worker(gpu, ngpus_per_node, args):
         if lr_scheduler is not None:
             for _dummy in range(ckpt_epoch-1):
                 lr_scheduler.step()
-            # lr_scheduler.load_state_dict(ckpt["lr_scheduler"])
         print("CHECKPOINT LOADED to device: {}".format(device))
     else:
         print('NO CHECKPOINT LOADED, FRESH START!')
 
     actual_trained_epoch = args.epoch
 
-    # isMainTask = not args.multiprocessing_distributed or (args.multiprocessing_distributed and args.rank % ngpus_per_node == 0)
-    isMainTask = gpu==0
+    is_main_task = not args.multiprocessing_distributed or (args.multiprocessing_distributed and args.rank % ngpus_per_node == 0)
 
-    if isMainTask:
+    if is_main_task:
         print('This is the device: {} for the main task!'.format(device))
-        # was hanging on wandb 0.12.9, fixed after upgrading to 0.15.7
+        # was hanging on wandb init on wandb 0.12.9, fixed after upgrading to 0.15.7
         wandb_logger = wandbLogger(args)
         logger = metaLogger(args)
         logging.basicConfig(
@@ -231,7 +228,7 @@ def main_worker(gpu, ngpus_per_node, args):
         best_acc1 = max(test_acc1, best_acc1)
 
         # Logging and checkpointing only at the main task (rank0)
-        if isMainTask:
+        if is_main_task:
             logger.add_scalar("train/top1_acc", train_acc1, _epoch)
             logger.add_scalar("train/top5_acc", train_acc5, _epoch)
             logger.add_scalar("train/loss", loss, _epoch)
@@ -292,7 +289,7 @@ def main_worker(gpu, ngpus_per_node, args):
     # _, imagenet_r_loader, _, _ = load_dataset('imagenet-r', args.batch_size, args.workers, args.distributed)
     # imagenet_r_acc1, imagenet_r_acc5 = validate(imagenet_r_loader, model, criterion, args)
     
-    # if isMainTask:
+    # if is_main_task:
         # logger.add_scalar("imagenet-a/top1_acc", imagenet_a_acc1, args.epoch)
         # logger.add_scalar("imagenet-a/top5_acc", imagenet_a_acc5, args.epoch)
         # logger.add_scalar("imagenet-o/top1_acc", imagenet_o_acc1, args.epoch)
@@ -318,19 +315,19 @@ def main_worker(gpu, ngpus_per_node, args):
                 # imagenet_c_acc1, imagenet_c_acc5 = validate(imagenet_c_loader, model, criterion, args)
                 # corruption_acc1.append(imagenet_c_acc1)
                 # corruption_acc5.append(imagenet_c_acc5)
-                # if isMainTask:
+                # if is_main_task:
                     # logger.add_scalar('imagenet-c/{}-{}/top1_acc'.format(corruption, _severity),
                             # imagenet_c_acc1, args.epoch)
                     # logger.add_scalar('imagenet-c/{}-{}/top5_acc'.format(corruption, _severity),
                             # imagenet_c_acc5, args.epoch)
-        # if isMainTask:
+        # if is_main_task:
             # logger.add_scalar('imagenet-c/mCC-{}/top1_acc'.format(_severity),
                     # np.array(corruption_acc1).mean(), args.epoch)
             # logger.add_scalar('imagenet-c/mCC-{}/top5_acc'.format(_severity),
                     # np.array(corruption_acc5).mean(), args.epoch)
 
     # upload runs to wandb:
-    if isMainTask:
+    if is_main_task:
         print('Saving final model!')
         saveModel(args.j_dir+"/model/", "final_model", model.state_dict())
         print('Final model saved!')
