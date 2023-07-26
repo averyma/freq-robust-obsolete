@@ -21,13 +21,16 @@ from src.utils_augmentation import CustomAugment
 def load_dataset(dataset, batch_size=128, op_name='Identity', op_prob=1., op_magnitude=9, workers=4, distributed=False):
     
     # default augmentation
-    if dataset.startswith('cifar'):
+    if dataset.startswith('cifar') or dataset == 'svhn':
         if dataset == 'cifar10':
             mean = [x / 255 for x in [125.3, 123.0, 113.9]]
             std = [x / 255 for x in [63.0, 62.1, 66.7]]
         elif dataset == 'cifar100':
             mean = [x / 255 for x in [129.3, 124.1, 112.4]]
             std = [x / 255 for x in [68.2, 65.4, 70.4]]
+        elif dataset == 'svhn':
+            mean = [0.4376821, 0.4437697, 0.47280442]
+            std = [0.19803012, 0.20101562, 0.19703614]
 
         transform_train = transforms.Compose([
             # using 0.75 has a similar effect as pad 4 and randcrop
@@ -82,6 +85,9 @@ def load_dataset(dataset, batch_size=128, op_name='Identity', op_prob=1., op_mag
     elif dataset == 'cifar100':
         data_train = datasets.CIFAR100("./data", train=True, download=True, transform=transform_train)
         data_test = datasets.CIFAR100("./data", train=False, download=True, transform=transform_test)
+    elif dataset == 'svhn':
+        data_train = datasets.SVHN("./data/SVHN", split='train', download = True, transform=transform_train)
+        data_test = datasets.SVHN("./data/SVHN", split='test', download = True, transform=transform_test)
     elif dataset == 'dummy':
         data_train = datasets.FakeData(5000, (3, 224, 224), 1000, transforms.ToTensor())
         data_test = datasets.FakeData(1000, (3, 224, 224), 1000, transforms.ToTensor())

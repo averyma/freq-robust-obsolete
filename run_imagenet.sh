@@ -18,12 +18,12 @@ epoch=90
 lr=0.1
 #arch='resnet50'
 
-batch_size=256
+batch_size=128
 num_gpu=4
 seed=40
 optimize_cluster_param=false
 
-for arch in 'resnet50'; do
+for arch in 'resnet18'; do
 	for seed in 40 41 42 43 44; do
 		j_name=${date}'-'${dataset}'-'${arch}'-'${batch_size}'-'${seed}
 		#j_name='cluster-optim-'${gpu}'-'${workers}

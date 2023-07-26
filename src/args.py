@@ -130,7 +130,7 @@ def get_default(yaml_path):
 
 def get_args():
     args = parse_args()
-    if args.dataset.startswith('cifar'):
+    if args.dataset.startswith('cifar') or args.dataset == 'svhn':
         default = get_default('options/default_cifar.yaml')
     elif args.dataset == 'imagenet':
         default = get_default('options/default_imagenet.yaml')
