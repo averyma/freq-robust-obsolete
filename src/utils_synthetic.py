@@ -14,11 +14,10 @@ def load_SyntheticDataset(case = 1, input_d = 784,
     train_x, train_y = synthesizeData(case, input_d, 50000, mu, std, lambbda)
     test_x, test_y = synthesizeData(case, input_d, 10000, mu, std, lambbda)
         
-    if case in [7,8,9,10,11,12,13]:
+    if case in [7,8,9,10,11,12,13,14]:
         train_dataset = TensorDataset(train_x, train_y)
         test_dataset = TensorDataset(test_x, test_y)
     else:
-        
         train_dataset = TensorDataset(train_x.t(), train_y.t())
         test_dataset = TensorDataset(test_x.t(), test_y.t())
         
@@ -205,7 +204,6 @@ def synthesizeData(case = 1, d = 10, batchsize = 128, mu = 1, std = 0.5, lambbda
             for j in range(d):
                 if i >(cor_region-1) or j >(cor_region-1):
                     decay_ij[:,0,i,j] = i+j
-#         ipdb.set_trace()
                         
         decay = torch.exp(-lambbda*decay_ij)
         
@@ -217,6 +215,7 @@ def synthesizeData(case = 1, d = 10, batchsize = 128, mu = 1, std = 0.5, lambbda
         random_sign = (2*torch.randint(0,2,size=(batchsize,1,d,d))-1)
         random_sign[:,:,:cor_region,:cor_region] = 1
         x_tilde = decay*x_tilde*random_sign
+
         
     elif case ==13:        
         cor_region = 10
@@ -227,7 +226,6 @@ def synthesizeData(case = 1, d = 10, batchsize = 128, mu = 1, std = 0.5, lambbda
         for i in range(10):
             x_tilde[i*class_bs : (i+1)*class_bs,0,:cor_region,:cor_region] = torch.normal(mean = mu * (i+1), std = std, size = (class_bs,cor_region,cor_region))
             y[i*class_bs : (i+1)*class_bs] = i
-                    
     else:
         raise NotImplementedError("CASE NOT IMPLEMENTED")
     

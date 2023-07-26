@@ -17,16 +17,17 @@ def parse_args():
     			default=argparse.SUPPRESS)
     
     # hyper-param for optimization
-    parser.add_argument("--optim",
-    			default=argparse.SUPPRESS)
     parser.add_argument("--lr",
     			default=argparse.SUPPRESS, type=float)
-    parser.add_argument("--lr_update",
+    parser.add_argument("--lr_scheduler_type",
     			default=argparse.SUPPRESS)
     parser.add_argument("--momentum",
     			default=argparse.SUPPRESS, type=float)
     parser.add_argument("--weight_decay",
     			default=argparse.SUPPRESS, type=float)
+    parser.add_argument("--nesterov",
+                        default=argparse.SUPPRESS, type=distutils.util.strtobool)
+
     parser.add_argument("--batch_size",
     			default=argparse.SUPPRESS, type=int)
     parser.add_argument("--seed",
@@ -35,8 +36,7 @@ def parse_args():
     			default=argparse.SUPPRESS, type=int)
 
     # hyper-param for job_id, and ckpt
-    parser.add_argument("--j_dir", required=True,
-    			default=argparse.SUPPRESS)
+    parser.add_argument("--j_dir", required=True) 
     parser.add_argument("--j_id",
     			default=argparse.SUPPRESS, type=int)
     parser.add_argument("--ckpt_freq",
@@ -49,8 +49,60 @@ def parse_args():
                         default=argparse.SUPPRESS, type=distutils.util.strtobool)
 
     # for adversarial training, we just need to specify pgd steps
-    parser.add_argument("--pgd_steps",
-    			default=argparse.SUPPRESS, type=int)
+    # parser.add_argument("--pgd_steps",
+                            # default=argparse.SUPPRESS, type=int)
+    # parser.add_argument("--pgd_eps",
+                            # default=argparse.SUPPRESS, type=float)
+
+    parser.add_argument('--eval_AA',
+                        default=argparse.SUPPRESS, type=distutils.util.strtobool)
+    parser.add_argument('--eval_CC',
+                        default=argparse.SUPPRESS, type=distutils.util.strtobool)
+
+    parser.add_argument('--input_normalization',
+                        default=True, type=distutils.util.strtobool)
+    parser.add_argument('--enable_batchnorm',
+                        default=True, type=distutils.util.strtobool)
+
+    # various augmentations:
+    parser.add_argument("--op_name",
+                        default=argparse.SUPPRESS, type=str)
+    parser.add_argument("--op_prob",
+                        default=argparse.SUPPRESS, type=float)
+    parser.add_argument("--op_magnitude",
+                        default=argparse.SUPPRESS, type=int)
+
+    # imagenet training
+    parser.add_argument('-j', '--workers', default=4, type=int, metavar='N',
+                        help='number of data loading workers (default: 4)')
+    parser.add_argument('--world-size', default=-1, type=int,
+                        help='number of nodes for distributed training')
+    parser.add_argument('--rank', default=-1, type=int,
+                        help='node rank for distributed training')
+    parser.add_argument('--dist-url', default='tcp://224.66.41.62:23456', type=str,
+                        help='url used to set up distributed training')
+    parser.add_argument('--dist-backend', default='nccl', type=str,
+                        help='distributed backend')
+    parser.add_argument('--multiprocessing-distributed', action='store_true',
+                        help='Use multi-processing distributed training to launch '
+                        'N processes per node, which has N GPUs. This is the '
+                        'fastest way to use PyTorch for either single node or '
+                        'multi node data parallel training')
+    parser.add_argument('--optimize_cluster_param',
+                        default=False, type=distutils.util.strtobool)
+
+    # eval only:
+    parser.add_argument("--eval_only",
+                        default=False, type=distutils.util.strtobool)
+    parser.add_argument("--source_model",
+                        default=argparse.SUPPRESS)
+    parser.add_argument("--target_model",
+                        default=argparse.SUPPRESS)
+    parser.add_argument("--source_arch",
+                        default=argparse.SUPPRESS)
+    parser.add_argument("--target_arch",
+                        default=argparse.SUPPRESS)
+
 
     args = parser.parse_args()
 
@@ -76,11 +128,18 @@ def get_default(yaml_path):
 
 def get_args():
     args = parse_args()
-    default = get_default('options/default.yaml')
-    
+    if args.dataset.startswith('cifar'):
+        default = get_default('options/default_cifar.yaml')
+    elif args.dataset == 'imagenet':
+        default = get_default('options/default_imagenet.yaml')
+
     default.update(vars(args).items())
-    make_dir(default)
-    args_dict = DictWrapper(default)
+    
+    if not args.eval_only:
+        make_dir(default)
 
-    return args_dict
+    if args.dataset.startswith('cifar'):
+        args_dict = DictWrapper(default)
+        return args_dict
 
+    return argparse.Namespace(**default)

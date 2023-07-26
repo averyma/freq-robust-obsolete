@@ -1,160 +1,142 @@
 import torch
 import numpy as np
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, TensorDataset
+import torch.utils.data.distributed
 from torchvision import datasets, transforms
-    
-def load_RealDataset(dataset, _batch_size = 128):
+from torchvision.datasets.vision import VisionDataset
+from torchvision.datasets.utils import download_and_extract_archive, verify_str_arg
+from torchvision.transforms.functional import InterpolationMode
+from src.utils_freq import rgb2gray, dct, dct2, idct, idct2, batch_dct2, getDCTmatrix
+import ipdb
+from typing import Any, Callable, List, Optional, Union, Tuple
+import os
+from PIL import Image
+import math
 
-    if dataset in ["mnist","MNIST"]:
-        train_loader, test_loader = load_MNIST(_batch_size)
-    elif dataset in ["binarymnist","BinaryMnist","Binarymnist"]:
-        train_loader, test_loader = load_binaryMNIST(_batch_size)
-    elif dataset in ["fashionmnist","FashionMnist", "FashionMNIST"]:
-        train_loader, test_loader = load_FashionMNIST(_batch_size)
-    elif dataset in ["binarycifar10", "BinaryCifar10", "BinaryCIFAR10"]:
-        train_loader, test_loader = load_binaryCIFAR(_batch_size)
-    elif dataset in ["cifar", "CIFAR","cifar10","CIFAR10"]:
-        train_loader, test_loader = load_CIFAR(_batch_size)
-    elif dataset in ["graycifar", "grayCIFAR","graycifar10","grayCIFAR10"]:
-        train_loader, test_loader = load_grayCIFAR(_batch_size)
+from src.utils_augmentation import CustomAugment
+# from data.Caltech101.caltech_dataset import Caltech
+# from sklearn.model_selection import train_test_split
+# from torch.utils.data import Subset
+    
+def load_dataset(dataset, batch_size=128, op_name='Identity', op_prob=1., op_magnitude=9, workers=4, distributed=False):
+    
+    # default augmentation
+    if dataset.startswith('cifar'):
+        if dataset == 'cifar10':
+            mean = [x / 255 for x in [125.3, 123.0, 113.9]]
+            std = [x / 255 for x in [63.0, 62.1, 66.7]]
+        elif dataset == 'cifar100':
+            mean = [x / 255 for x in [129.3, 124.1, 112.4]]
+            std = [x / 255 for x in [68.2, 65.4, 70.4]]
+
+        transform_train = transforms.Compose([
+            # using 0.75 has a similar effect as pad 4 and randcrop
+            # April 4 commented because it seems to cause NaN in training
+            # transforms.RandomResizedCrop(32, scale=(0.75, 1.0), interpolation=Image.BICUBIC), 
+            transforms.RandomCrop(32, padding=2),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize(mean, std)
+        ])
+        transform_test = transforms.Compose([transforms.ToTensor(),
+                                             transforms.Normalize(mean, std)])
+    elif dataset == 'imagenet':
+        # mean/std obtained from: https://github.com/pytorch/examples/blob/97304e232807082c2e7b54c597615dc0ad8f6173/imagenet/main.py#L197-L198
+        # detail: https://discuss.pytorch.org/t/normalization-in-the-mnist-example/457/7
+        mean = [0.485, 0.456, 0.406]
+        std = [0.229, 0.224, 0.225]
+        transform_train = transforms.Compose([
+            transforms.RandomResizedCrop(224, scale=(0.08, 1.0), interpolation=Image.BICUBIC),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize(mean, std)
+        ])
+
+        transform_test = transforms.Compose([
+            transforms.Resize(256, interpolation=Image.BICUBIC),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean, std)
+        ])
+    elif dataset == 'dummy':
+        pass
+    elif dataset in ['imagenet-a', 'imagenet-o', 'imagenet-r']:
+        transform_test = transforms.Compose([
+            transforms.Resize(256, interpolation=Image.BICUBIC),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+        ])
     else:
-        raise NotImplementedError("Dataset not included")
-        
-    return train_loader, test_loader
+        raise ValueError('invalid dataset name=%s' % dataset)
     
-def load_binaryMNIST(batch_size):
-    # load MNIST data set into data loader
-    mnist_train = datasets.MNIST("./data", train=True, transform=transforms.ToTensor())
-    mnist_test = datasets.MNIST("./data", train=False,  transform=transforms.ToTensor())
-
-    idx_3, idx_7 = mnist_train.targets == 3, mnist_train.targets == 7
-    idx_train = idx_3 | idx_7
-
-    idx_3, idx_7 = mnist_test.targets == 3, mnist_test.targets == 7
-    idx_test = idx_3 | idx_7
+    # apply custom augmentation if op_name is not identity
+    if op_name != 'Identity' and dataset in ['cifar10', 'cifar100', 'imagenet']:
+        transform_train.transforms.insert(1 if dataset.startswith('cifar') else 2,
+                CustomAugment(op_name=op_name, op_prob=op_prob, magnitude=op_magnitude))
+        print(transform_train)
     
-    mnist_train.data = mnist_train.data[idx_train]
-    mnist_test.data = mnist_test.data[idx_test]
-        
+    # load dataset
+    if dataset == 'cifar10':
+        data_train = datasets.CIFAR10("./data", train=True, download=True, transform=transform_train)
+        data_test = datasets.CIFAR10("./data", train=False, download=True, transform=transform_test)
+    elif dataset == 'cifar100':
+        data_train = datasets.CIFAR100("./data", train=True, download=True, transform=transform_train)
+        data_test = datasets.CIFAR100("./data", train=False, download=True, transform=transform_test)
+    elif dataset == 'dummy':
+        data_train = datasets.FakeData(5000, (3, 224, 224), 1000, transforms.ToTensor())
+        data_test = datasets.FakeData(1000, (3, 224, 224), 1000, transforms.ToTensor())
+    elif dataset == 'imagenet':
+        dataroot = '/scratch/ssd002/datasets/imagenet'
+        traindir = os.path.join(dataroot, 'train')
+        valdir = os.path.join(dataroot, 'val')
+        data_train = datasets.ImageFolder(traindir,transform_train)
+        data_test = datasets.ImageFolder(valdir,transform_test)
+    elif dataset in ['imagenet-a', 'imagenet-o', 'imagenet-r']:
+        dataroot = '/scratch/ssd002/datasets/{}/'.format(dataset)
+        data_test = datasets.ImageFolder(dataroot,transform_test)
+
+    if distributed:
+        if dataset not in ['imagenet-a', 'imagenet-o','imagenet-r']:
+            train_sampler = torch.utils.data.distributed.DistributedSampler(data_train)
+        else:
+            train_sampler = None
+        val_sampler = torch.utils.data.distributed.DistributedSampler(data_test, shuffle=False, drop_last=True)
+    else:
+        train_sampler = None
+        val_sampler = None
+
+    if dataset not in ['imagenet-a', 'imagenet-o', 'imagenet-r']:
+        train_loader = torch.utils.data.DataLoader(
+            data_train, batch_size=batch_size, shuffle=(train_sampler is None),
+            num_workers=workers, pin_memory=True, sampler=train_sampler)
+    else:
+        train_loader = None
+
+    test_loader = torch.utils.data.DataLoader(
+        data_test, batch_size=batch_size, shuffle=False,
+        num_workers=workers, pin_memory=True, sampler=val_sampler)
+
+    return train_loader, test_loader, train_sampler, val_sampler
+
+def load_IMAGENET_C(batch_size=32, distortion_name='brightness', severity=1, workers=4, distributed=False):
     
-    mnist_train.targets = mnist_train.targets[idx_train]
-    mnist_test.targets = mnist_test.targets[idx_test]
-
-    # label 0: 3, label 1: 7 
-    mnist_train.targets = ((mnist_train.targets - 3)/4).float()
-    mnist_test.targets = ((mnist_test.targets - 3)/4).float()
-
-    train_loader = DataLoader(mnist_train, batch_size = batch_size, shuffle=True)
-    test_loader = DataLoader(mnist_test, batch_size = batch_size, shuffle=True)
-    
-    class_holder = ['0 - zero',
-                    '1 - one']
-    train_loader.dataset.classes = class_holder
-    test_loader.dataset.classes = class_holder
-    
-    return train_loader, test_loader
-
-def load_MNIST(batch_size):
-    # load MNIST data set into data loader
-    mnist_train = datasets.MNIST("./data", train=True, transform=transforms.ToTensor())
-    mnist_test = datasets.MNIST("./data", train=False,  transform=transforms.ToTensor())
-
-    train_loader = DataLoader(mnist_train, batch_size = batch_size, shuffle=True)
-    test_loader = DataLoader(mnist_test, batch_size = batch_size, shuffle=True)
-    
-    return train_loader, test_loader
-
-def load_FashionMNIST(batch_size):
-    # load MNIST data set into data loader
-    fmnist_train = datasets.FashionMNIST("./data", train=True, download = True, transform=transforms.ToTensor())
-    fmnist_test = datasets.FashionMNIST("./data", train=False,  download = True, transform=transforms.ToTensor())
-
-    train_loader = DataLoader(fmnist_train, batch_size = batch_size, shuffle=True)
-    test_loader = DataLoader(fmnist_test, batch_size = batch_size, shuffle=True)
-    
-    return train_loader, test_loader
-
-def load_grayCIFAR(batch_size):
-    transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding = 4),
-        transforms.RandomHorizontalFlip(),
-        transforms.Grayscale(num_output_channels=1),
-        transforms.ToTensor()])
-
-    transform_test = transforms.Compose([
-        transforms.Grayscale(num_output_channels=1),
-        transforms.ToTensor()])
-
-    data_train = datasets.CIFAR10("./data", train=True, download = True, transform=transform_train)
-    data_test = datasets.CIFAR10("./data", train=False, download = True, transform=transform_test)
-    
-    train_loader = DataLoader(data_train, batch_size = batch_size, shuffle=True)
-    test_loader = DataLoader(data_test, batch_size = batch_size, shuffle=True)
-    
-    class_holder = ['0 - zero',
-                    '1 - one']
-    train_loader.dataset.classes = class_holder
-    test_loader.dataset.classes = class_holder
-
-    return train_loader, test_loader
-
-def load_binaryCIFAR(batch_size, target1=1, target2=5):
-    transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding = 4),
-        transforms.RandomHorizontalFlip(),
-        transforms.Grayscale(num_output_channels=1),
-        transforms.ToTensor()])
-
-    transform_test = transforms.Compose([
-        transforms.Grayscale(num_output_channels=1),
+    transform = transforms.Compose([
+        transforms.Resize(256, interpolation=Image.BICUBIC),
+        transforms.CenterCrop(224), 
         transforms.ToTensor()])
     
-    # load CIFAR data set into data loader
-    data_train = datasets.CIFAR10("./data", train=True, download = True, transform=transform_train)
-    data_test = datasets.CIFAR10("./data", train=False, download = True, transform=transform_test)
+    data_root = '/scratch/ssd002/datasets/imagenet-c/' + distortion_name + '/' + str(severity) + '/'
     
-     
-    idx_3, idx_7 = torch.tensor(data_train.targets) == target1, torch.tensor(data_train.targets) == target2
-    idx_train = (idx_3 | idx_7).tolist()
-
-    idx_3, idx_7 = torch.tensor(data_test.targets) == target1, torch.tensor(data_test.targets) == target2
-    idx_test = (idx_3 | idx_7).tolist()
+    distorted_dataset = datasets.ImageFolder(
+            root=data_root,
+            transform=transform)
     
-    data_train.data = data_train.data[idx_train,:,:,:]
-    data_test.data = data_test.data[idx_test,:,:,:]
-        
-    data_train.targets = torch.tensor(data_train.targets)[idx_train].tolist()
-    data_test.targets = torch.tensor(data_test.targets)[idx_test].tolist()
+    if distributed:
+        val_sampler = torch.utils.data.distributed.DistributedSampler(data_test, shuffle=False, drop_last=True)
+    else:
+        val_sampler = None
 
-    # label 0: 3, label 1: 7
-    idx_train = (torch.tensor(data_train.targets) == target1)
-    data_train.targets = idx_train.float().tolist()
-    idx_test = (torch.tensor(data_test.targets) == target1)
-    data_test.targets = idx_test.float().tolist()
-    
-    train_loader = DataLoader(data_train, batch_size = batch_size, shuffle=True)
-    test_loader = DataLoader(data_test, batch_size = batch_size, shuffle=True)
-    
-    class_holder = ['0 - zero',
-                    '1 - one']
-    train_loader.dataset.classes = class_holder
-    test_loader.dataset.classes = class_holder
-    
-    return train_loader, test_loader
-
-def load_CIFAR(batch_size):
-    transform_train = transforms.Compose([
-        transforms.RandomCrop(32, padding = 4),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor()])
-
-    transform_test = transforms.Compose([
-        transforms.ToTensor()])
-
-    data_train = datasets.CIFAR10("./data", train=True, download = True, transform=transform_train)
-    data_test = datasets.CIFAR10("./data", train=False, download = True, transform=transform_test)
-    
-    train_loader = DataLoader(data_train, batch_size = batch_size, shuffle=True)
-    test_loader = DataLoader(data_test, batch_size = batch_size, shuffle=True)
-
-    return train_loader, test_loader
+    test_loader = torch.utils.data.DataLoader(
+        distorted_dataset, batch_size=batch_size, shuffle=False,
+        num_workers=workers, pin_memory=True, sampler=val_sampler)
+    return test_loader

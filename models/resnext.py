@@ -1,10 +1,8 @@
-'''ResNeXt in PyTorch.
-See the paper "Aggregated Residual Transformations for Deep Neural Networks" for more details.
-'''
+'''https://raw.githubusercontent.com/kuangliu/pytorch-cifar/master/models/resnext.py'''
 
-'''
-this is from https://github.com/kuangliu/pytorch-cifar
-kuangliu's implementation of resnext
+'''ResNeXt in PyTorch.
+
+See the paper "Aggregated Residual Transformations for Deep Neural Networks" for more details.
 '''
 import torch
 import torch.nn as nn
@@ -42,7 +40,7 @@ class Block(nn.Module):
 
 
 class ResNeXt(nn.Module):
-    def __init__(self, num_blocks, cardinality, bottleneck_width, num_classes=10):
+    def __init__(self, num_blocks, cardinality, bottleneck_width, num_classes=10, input_normalization=True):
         super(ResNeXt, self).__init__()
         self.cardinality = cardinality
         self.bottleneck_width = bottleneck_width
@@ -55,6 +53,7 @@ class ResNeXt(nn.Module):
         self.layer3 = self._make_layer(num_blocks[2], 2)
         # self.layer4 = self._make_layer(num_blocks[3], 2)
         self.linear = nn.Linear(cardinality*bottleneck_width*8, num_classes)
+        self.input_normalization = input_normalization
 
     def _make_layer(self, num_blocks, stride):
         strides = [stride] + [1]*(num_blocks-1)
@@ -77,7 +76,8 @@ class ResNeXt(nn.Module):
         return (x - mean) / adjusted_stddev
 
     def forward(self, x):
-        x = self.per_image_standardization(x)
+        if self.input_normalization:
+            x = self.per_image_standardization(x)
         out = F.relu(self.bn1(self.conv1(x)))
         out = self.layer1(out)
         out = self.layer2(out)
@@ -100,6 +100,9 @@ def ResNeXt29_8x64d():
 
 def ResNeXt29_32x4d():
     return ResNeXt(num_blocks=[3,3,3], cardinality=32, bottleneck_width=4)
+
+def ResNeXt29_4x24d(num_classes, input_normalization):
+    return ResNeXt(num_blocks=[3,3,3], cardinality=4, bottleneck_width=24, num_classes=num_classes, input_normalization=input_normalization)
 
 def test_resnext():
     net = ResNeXt29_2x64d()

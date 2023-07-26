@@ -23,21 +23,6 @@ warnings.filterwarnings("ignore")
 avoid_zero_div = 1e-12
 
 
-
-
-
-
-
-
-
-
-
-                
-
-
-
-
-
 def plot_theta_tilde_NN_image_v3(theta_tilde_log, x_per_case, y_per_case, numb_dct_basis, y_limit):
     
     theta_tilde = theta_tilde_log.clone().detach()

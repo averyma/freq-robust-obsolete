@@ -5,6 +5,8 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import ipdb
+from random import randrange
+from src.utils_freq import dct2
     
 def plot_theta_tilde_NN_flatten(theta_tilde_log, y_limit=0):
     
@@ -153,3 +155,66 @@ def plot_acc_NN(log, threshold = 1e-3, plot_itr = 1000):
 #     fig.tight_layout()
     plt.gca().spines['top'].set_visible(False)
     plt.gca().spines['right'].set_visible(False)
+
+
+def visualize_two_layer(model, init_weight):
+    # num_plot = model.conv1.weight.shape[0] if model.conv1.weight.shape[0]<5 else 5
+    num_plot = init_weight.shape[0]
+    
+    fig, axes = plt.subplots(nrows=3, ncols=num_plot, figsize=((num_plot)*6,15))
+    
+    for i, ax in enumerate(axes.flat):
+        
+        row, col = i//num_plot, i-(i//num_plot)*num_plot
+        
+#         print(row,col)
+        if row == 0:
+            init_w = init_weight[col].squeeze().clone().detach()
+            dct_plot = dct2(init_w).abs().detach()
+            title = "$|{\~\Theta}_{init}|$"
+        elif row == 1:
+            final_w = model.conv1.weight[col].squeeze().clone().detach()
+            dct_plot = dct2(final_w).abs().detach()
+            title = "$|{\~\Theta}_{final}|$"
+        elif row ==2:
+            init_w = init_weight[col].squeeze().clone().detach()
+            dct_init = dct2(init_w).abs().detach()
+            final_w = model.conv1.weight[col].squeeze().clone().detach()
+            dct_final = dct2(final_w).abs().detach()
+            dct_plot = (dct_init-dct_final).squeeze().abs()
+            title = "$| {\~\Theta}_{init} - {\~\Theta}_{final}|$"
+            
+        im = ax.imshow(dct_plot.cpu().numpy(), cmap='gray')
+        fig.colorbar(im, ax = ax)
+        ax.set_title(title,fontsize = 15)
+        ax.xaxis.set_visible(False)
+        ax.yaxis.set_visible(False)
+    return fig
+
+def visualize_attack(x, x_adv):
+    print(x.shape,x_adv.shape)
+    
+    num_plot = x_adv.shape[0] if x_adv.shape[0]<5 else 5
+    
+    fig, axes = plt.subplots(nrows=3, ncols=num_plot, figsize=((num_plot)*6,10))
+
+    for i, ax in enumerate(axes.flat):
+        
+        row, col = i//num_plot, i-(i//num_plot)*num_plot
+        
+#         print(row,col)
+        if row == 0:
+            img = x[col].squeeze().detach().cpu().numpy()
+        elif row == 1:
+            img = x_adv[col].squeeze().detach().cpu().numpy()
+        elif row ==2:
+            img = (x_adv[col]-x[col]).squeeze().detach().cpu().numpy()
+            
+            
+        im = ax.imshow(img, cmap='gray')
+            
+        fig.colorbar(im, ax = ax)
+
+        ax.xaxis.set_visible(False)
+        ax.yaxis.set_visible(False)
+    return fig

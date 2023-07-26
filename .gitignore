@@ -9,9 +9,14 @@
 /notebook/test.ipynb
 .ipynb_checkpoints/
 /src/.ipynb_checkpoints/
+/notebook/*
 /notebook/data/
 /notebook/__pycache__/
 /NTK-and-MF-examples/
 /notebook/
 figure*
 other_figure/
+*.ptu
+*.swp
+autoattack/
+checkpoints/

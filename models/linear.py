@@ -11,104 +11,49 @@ import torch.nn.functional as F
 import numpy as np
 import ipdb
 
-class linear1(nn.Module):
+class linear_flatten(nn.Module):
     def __init__(self):
-        super(linear1, self).__init__()
-        self.l = nn.Linear(784, 10, bias = True)
+        super(linear_flatten, self).__init__()
+        self.l = nn.Linear(784, 10, bias = False)
         
-        # self.l.weight.data = torch.zeros_like(self.l.weight.data)
-        # self.l.weight.data = torch.sign(torch.rand_like(self.l.weight.data))*0.1
-        # self.l.weight.data[0]= 0.1
-        # self.l.weight.data[1]= -0.1
-        # self.l.bias.data = torch.zeros_like(self.l.bias.data)
-
     def forward(self, x):
         x = x.view(-1, 784)
         return self.l(x)
 
-class linear2(nn.Module):
-    def __init__(self):
-        super(linear2, self).__init__()
-        self.l = nn.Linear(784, 1, bias = True)
-        self.sig = nn.Sigmoid()
-        
-        # self.l.weight.data = torch.zeros_like(self.l.weight.data)
-        # self.l.weight.data = torch.sign(torch.rand_like(self.l.weight.data))*0.1
-        # self.l.weight.data[0]= 0.1
-        # self.l.weight.data[1]= -0.1
-        # self.l.bias.data = torch.zeros_like(self.l.bias.data)
-
+class linear_conv(nn.Module):
+    def __init__(self, input_dim, output_dim, init='default', bias = False):
+        super(linear_conv, self).__init__()
+        self.conv1 = nn.Conv2d(1, output_dim, input_dim, 1, bias = bias)
+        # if init=='default': 
+            # # https://discuss.pytorch.org/t/what-is-the-default-initialization-of-a-conv2d-layer-and-linear-layer/16055
+            # stdv = 1./28
+            # torch.nn.init.uniform_(self.conv1.weight,a=-stdv, b=stdv)
+        # elif init =='std_normal':
+            # torch.nn.init.normal_(self.conv1.weight,mean=0.0, std=1.0)
+        # elif init =='kaiming_normal':
+            # torch.nn.init.kaiming_normal_(self.conv1.weight, nonlinearity='relu')
+            
     def forward(self, x):
-        x = x.view(-1, 784)
-        return self.sig(self.l(x))
+        output = self.conv1(x)[:,:,0,0]
+        return output
 
-class linear3(nn.Module):
-    def __init__(self):
-        super(linear3, self).__init__()
-        self.l = nn.Linear(784, 10, bias = True)
-        self.sig = nn.Sigmoid() 
-        # self.l.weight.data = torch.zeros_like(self.l.weight.data)
-        # self.l.weight.data = torch.sign(torch.rand_like(self.l.weight.data))*0.1
-        # self.l.weight.data[0]= 0.1
-        # self.l.weight.data[1]= -0.1
-        # self.l.bias.data = torch.zeros_like(self.l.bias.data)
-
-    def forward(self, x):
-        x = x.view(-1, 784)
-        return self.sig(self.l(x))
-
-class linear5(nn.Module):
-    """
-    Implementation of the "2-hidden-layer ReLU network with 1000 hidden units" used in the 
-    adversarial sphere paper: https://arxiv.org/abs/1801.02774
-    """
-    def __init__(self):
-        super(linear5, self).__init__()
-        self.layer1 = nn.Linear(500, 1000, bias = True)
-        self.layer2 = nn.Linear(1000, 1000, bias = True)
-        self.readout = nn.Linear(1000, 2, bias = True)
-        self.bn1 = nn.BatchNorm1d(1000)
-        self.bn2 = nn.BatchNorm1d(1000)
-
-    def forward(self, x):
-        x = self.layer1(x)
-        x = self.bn1(x)
-        x = F.relu(x)
-        x = self.layer2(x)
-        x = self.bn2(x)
-        x = F.relu(x)
-        x = self.readout(x)
-    
-        return x
-    
-class quad1(nn.Module):
-    """
-    Implementation of the "quadratic network" used in the 
-    adversarial sphere paper: https://arxiv.org/abs/1801.02774
-    """
-    def __init__(self):
-        super(quad1, self).__init__()
-        self.layer1 = nn.Linear(500, 1000, bias = False)
-        self.readout = nn.Linear(1, 1, bias = True)
-
-    def act(self, x):
-        return x**2
-    
-    def forward(self, x):
-        x = self.layer1(x)
-        x = self.act(x)
-        x = x.sum(dim = 1, keepdim = True)
-        x = self.readout(x)
-    
-        return x.squeeze()
-    
 class LR_model(nn.Module):
+    """
+    Typically, during initialization, weights are sampled from 
+    1. Normal distribution with zero mean and std^2 where std is computed using 1/sqrt(features)
+        std is inversely proportional to the dim
+        with large nn, we can argue that std is very small, so weights are iniatilized around 0
+    2. Uniform{-k, k}, where k = 1/sqrt(input features)
+    """
     def __init__(self, dim):
         super(LR_model, self).__init__()
         self.linear = nn.Linear(dim, 1, bias = False)
-#         self.conv1 = nn.Conv2d(1, dim, 28, 1, bias = False)
+        torch.nn.init.normal_(self.linear.weight,mean=0.0, std=0.001)
         
-        torch.nn.init.kaiming_normal_(self.linear.weight)
+        
+#         torch.nn.init.normal_(self.linear.weight,mean=0.0, std=1.0)
+#         print(self.linear.weight.shape)
+#         torch.nn.init.kaiming_normal_(self.linear.weight)
     
 #         k = 0.5*torch.ones_like(self.linear.weight.data)
 #         print(self.linear.weight.data)
@@ -118,7 +63,6 @@ class LR_model(nn.Module):
 #         print(self.linear.weight.data)
         
     def forward(self, x):
-#         x = torch.flatten(1, x)
         output = self.linear(x.t())
-#         output = self.conv1(x)
         return output
+
